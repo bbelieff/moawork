@@ -41,6 +41,7 @@ function actions() {
     reorder: vi.fn(async (formData: FormData) => { void formData; }),
     renameStage: vi.fn(async (_boardId: string, _groupId: string, value: string) => ({ ok: true as const, name: value })),
     add: vi.fn(async (formData: FormData) => { void formData; }),
+    deleteStage: vi.fn(async (formData: FormData) => { void formData; }),
     trash: vi.fn(async (formData: FormData) => { void formData; }),
   };
 }
@@ -71,7 +72,7 @@ async function mount({
           subtitles={{ general: "이름 · 아이콘 · 설명", fields: "3개", stages: "3개 · 진행현황과 연결" }}
           general={<TabSettingsGeneral boardId="b" name="리드컨택 관리" icon="💰" source="core.default-tab/contact" description="처음 설명" renameAction={calls.rename} identityAction={calls.identity} />}
           fields={<p>항목 관리 내용</p>}
-          stages={<TabSettingsStages boardId="b" stages={stages} note="단계 = 보드예요." reorderAction={calls.reorder} renameAction={calls.renameStage} addAction={calls.add} />}
+          stages={<TabSettingsStages boardId="b" stages={stages} note="단계 = 보드예요." reorderAction={calls.reorder} renameAction={calls.renameStage} addAction={calls.add} deleteAction={calls.deleteStage} />}
         />
       )}
       trash={withTrash ? (
@@ -476,13 +477,25 @@ describe("탭 설정 › 단계", () => {
     expect(input.value).toBe("");
   });
 
-  it("지우기는 잠겨 있고, 행이 남은 단계는 이유를 말한다", async () => {
+  it("행이 남은 단계는 지우기가 잠기고 이유를 말한다", async () => {
     await openStages();
     const remove = buttonNamed("준비 지우기");
     expect(remove.getAttribute("aria-disabled")).toBe("true");
     const reason = document.getElementById(remove.getAttribute("aria-describedby")!)!;
     expect(reason.textContent).toContain("행이 2건 남아 있어 지울 수 없어요");
-    expect(buttonNamed("심사 중 지우기").getAttribute("aria-disabled")).toBe("true");
+  });
+
+  it("빈 단계는 두 번 눌러 지운다 — 한 번은 확인, 두 번째에 그룹 지우기 액션 (2026-10-19)", async () => {
+    const { calls } = await openStages();
+    const remove = buttonNamed("심사 중 지우기");
+    expect(remove.getAttribute("aria-disabled")).toBeNull();
+    await act(async () => remove.click());
+    expect(calls.deleteStage).not.toHaveBeenCalled();
+    await act(async () => buttonNamed("심사 중 정말 지우기").click());
+    expect(calls.deleteStage).toHaveBeenCalledTimes(1);
+    const sent = calls.deleteStage.mock.calls[0]![0] as FormData;
+    expect(sent.get("groupId")).toBe("g2");
+    expect(rowNames()).toEqual(["g1", "g3"]);
   });
 });
 

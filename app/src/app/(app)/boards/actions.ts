@@ -801,6 +801,17 @@ export async function addGroupAction(formData: FormData): Promise<void> {
   });
 }
 
+/** 2026-10-19 — 탭 설정 › 단계 지우기(빈 단계·기본 단계 아님). 규칙은 service.deleteGroup 이 지킨다. */
+export async function deleteGroupAction(formData: FormData): Promise<void> {
+  return runBoardAction(formData, async () => {
+    const ctx = await getSession();
+    await requirePermission(ctx, "structure.section_manage");
+    const boardId = str(formData, "boardId");
+    await (await boardsService()).deleteGroup(ctx, boardId, str(formData, "groupId"));
+    revalidatePath(`/boards/${boardId}`);
+  });
+}
+
 export async function reorderGroupsAction(formData: FormData): Promise<void> {
   return runBoardAction(formData, async () => {
     const ctx = await getSession();

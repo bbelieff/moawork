@@ -80,7 +80,7 @@ export function BoardHeader({
 
   return (
     <div ref={headerRef} data-visual-block="board-header" className="relative flex min-w-0 max-w-full items-center gap-3">
-      <div className="mw-board-inline-scroll flex min-w-0 flex-1 flex-nowrap items-center gap-1.5 overflow-x-auto overflow-y-hidden pe-2 [scroll-padding-inline-end:0.5rem]">
+      <div className="mw-board-inline-scroll -my-3 flex min-w-0 flex-1 flex-nowrap items-center gap-1.5 overflow-x-auto overflow-y-hidden py-3 ps-3 -ms-3 pe-2 [scroll-padding-inline-end:0.5rem]">
         {backSlot}
 
         <h1 className="flex shrink-0 items-center gap-2 text-[length:var(--fs-18)] font-semibold tracking-[var(--ls-tight)] text-mw-fg sm:text-[length:var(--fs-22)]">
@@ -90,7 +90,7 @@ export function BoardHeader({
             className="inline-grid size-9 shrink-0 place-items-center rounded-full"
             style={{
               background: "linear-gradient(135deg, color-mix(in srgb, var(--mw-cta-solid, var(--mw-record)) 18%, transparent), color-mix(in srgb, var(--mw-cta-solid, var(--mw-record)) 6%, transparent))",
-              boxShadow: "inset 0 0 0 1px color-mix(in srgb, var(--mw-cta-solid, var(--mw-record)) 28%, transparent), 0 4px 14px color-mix(in srgb, var(--mw-cta-solid, var(--mw-record)) 18%, transparent)",
+              boxShadow: "inset 0 0 0 1px color-mix(in srgb, var(--mw-cta-solid, var(--mw-record)) 28%, transparent), 0 3px 9px color-mix(in srgb, var(--mw-cta-solid, var(--mw-record)) 20%, transparent)",
             }}
           >
             <TabIcon name={iconKey} size={19} style={{ color: "var(--mw-tab-icon, var(--mw-record))" }} />

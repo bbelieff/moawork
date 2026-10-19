@@ -97,7 +97,7 @@ describe("SidebarNav integration contract", () => {
     );
 
     expect(html).toContain('data-destination="/workspace-entry?mode=new"');
-    expect(html).toContain('class="hidden min-h-0 flex-1 flex-col gap-px overflow-x-hidden overflow-y-auto overscroll-contain md:flex"');
+    expect(html).toContain('class="hidden min-h-0 flex-1 flex-col gap-px overflow-x-hidden overflow-y-auto overscroll-contain md:flex md:-mx-3 md:px-3 md:-my-2 md:py-2"');
     expect(html).not.toContain("관리자 모드로");
     expect(html).not.toContain('action="/mode/preference"');
   });

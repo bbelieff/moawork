@@ -11,6 +11,7 @@ import { groupToneAccent, resolveGroupTones } from "./group-tone";
 import { primaryStageForGroup } from "./moveRules";
 import { groupLinkedStageColumnKey } from "./stage-link";
 import { CONTACT_TAB_SOURCE, NEW_LEAD_TAB_SOURCE } from "@/lib/default-tabs/types";
+import { protectedDefaultGroupIds } from "@/lib/default-tabs/install";
 
 export type TabStageRow = Readonly<{
   id: string;
@@ -19,6 +20,8 @@ export type TabStageRow = Readonly<{
   accent: string;
   /** 지금 화면에 보이는(권한 안의) 행 수. */
   rowCount: number;
+  /** 기본 탭의 정의 단계 — 지워도 다음 진입 때 다시 생기므로 지우기를 잠근다. */
+  isDefault?: boolean;
 }>;
 
 /** 그룹 순서대로 단계 줄을 만든다. 행 수는 넘겨받은 행(권한으로 거른 것)만 센다. */
@@ -28,6 +31,7 @@ export function tabStageRows(
   groups: readonly BoardGroup[],
   rows: readonly { group_id: string | null }[],
 ): TabStageRow[] {
+  const protectedIds = protectedDefaultGroupIds(source, columns, groups);
   const ordered = [...groups].sort((a, b) => a.sort_order - b.sort_order);
   const linkedKey = groupLinkedStageColumnKey(source);
   const stageColumn = linkedKey ? columns.find((column) => column.key === linkedKey) ?? null : null;
@@ -48,6 +52,7 @@ export function tabStageRows(
     name: group.name,
     accent: groupToneAccent(tones.get(group.id)),
     rowCount: counts.get(group.id) ?? 0,
+    isDefault: protectedIds.has(group.id),
   }));
 }
 
