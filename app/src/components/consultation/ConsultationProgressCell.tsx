@@ -13,6 +13,7 @@ import { useId, useOptimistic, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { requestItemDetailOpen } from "@/lib/boards/item-detail-open";
 import { mutateConsultationWorkflow } from "@/lib/consultation/actions";
+import { noticeLive, noticeRole } from "@/lib/ui/result-notice";
 import {
   INPERSON_PHASES,
   REMOTE_PHASES,
@@ -255,7 +256,7 @@ function ConsultationStagePicker({
         >
           취소
         </button>
-        {error ? <span role="alert" title={error} className="max-w-24 truncate text-[0.68rem] text-mw-error">{error}</span> : null}
+        {error ? <span role={noticeRole(!error)} aria-live={noticeLive(!error)} title={error} className="max-w-24 truncate text-[0.68rem] text-mw-error">{error}</span> : null}
       </form>
     );
   }
@@ -280,7 +281,7 @@ function ConsultationStagePicker({
         </optgroup>
       </select>
       {error ? (
-        <span role="alert" title={error} className="min-w-0 flex-1 truncate text-[0.68rem] text-mw-error">{error}</span>
+        <span role={noticeRole(!error)} aria-live={noticeLive(!error)} title={error} className="min-w-0 flex-1 truncate text-[0.68rem] text-mw-error">{error}</span>
       ) : meetingAt ? (
         <span className="min-w-0 flex-1 truncate text-[0.7rem] text-mw-sub">{shortWhen(meetingAt)}</span>
       ) : <span className="flex-1" />}
