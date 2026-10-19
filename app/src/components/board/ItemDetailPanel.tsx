@@ -10,6 +10,7 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
+  type ComponentProps,
 } from "react";
 import { useFormStatus } from "react-dom";
 import {
@@ -122,6 +123,7 @@ import { Chevron } from "@/components/ui/Chevron";
 import { moveItemToTrash } from "./ItemTrashUndo";
 import styles from "./item-detail-panel.module.css";
 import { groupIfPlainNumber } from "@/lib/format/group-digits";
+import { escapeOwnedByOpenList } from "@/lib/ui/escape-owner";
 
 const CANONICAL_NEW_LEAD_DETAIL_KEYS = new Set([
   "applied_on", "address_detail", "rep_name", "phone", "email", "biz_reg_type",
@@ -244,9 +246,17 @@ function AutoSaveField({
     void drain();
   }
 
+  // 패널이 닫힐 때 아직 보내지 않은(0.7초 대기 중) 마지막 수정은 버리지 않고 바로 저장한다.
+  const saveRef = useRef(save);
+  useEffect(() => {
+    saveRef.current = save;
+  });
   useEffect(
     () => () => {
-      if (timerRef.current) clearTimeout(timerRef.current);
+      if (!timerRef.current) return;
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
+      saveRef.current(valueRef.current);
     },
     [],
   );
@@ -533,7 +543,7 @@ function SaveLayoutForm({
   );
 }
 
-export function ItemDetailPanel({
+function ItemDetailPanelInner({
   boardId,
   row,
   columns,
@@ -1003,7 +1013,7 @@ export function ItemDetailPanel({
     if (titleInputRef.current) focusDetailPanelElement(titleInputRef.current);
     else focusDetailPanelElement(closeButtonRef.current);
     const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") closeDrawer();
+      if (event.key === "Escape" && !escapeOwnedByOpenList(event)) closeDrawer();
       if (event.key === "Tab") {
         const focusable = Array.from(
           dialogRef.current?.querySelectorAll<HTMLElement>(
@@ -2841,4 +2851,45 @@ export function DetailFieldSubmit({ idle, className }: { idle: string; className
       {pending ? "추가하는 중…" : idle}
     </button>
   );
+}
+
+
+/**
+ * 2026-10-19 web-design-guidelines 검토 — 표는 행마다 상세 패널을 미리 붙여 두었다(행마다 상태 30여 개 +
+ * hashchange 감시). 표에서 여는 패널(trigger="none")은 그 행이 처음 열릴 때만 실제 패널을 붙인다.
+ * 한 번 붙인 패널은 그대로 둔다(닫았다 다시 열어도 같은 상태). 여는 요청은 붙인 뒤 한 번 더 보내 준다.
+ */
+export function ItemDetailPanel(props: ComponentProps<typeof ItemDetailPanelInner>) {
+  const lazy = props.trigger === "none" && !props.defaultOpen;
+  const itemId = props.row.id;
+  const [armed, setArmed] = useState(!lazy);
+  const pendingRef = useRef<ItemDetailOpenRequest | null>(null);
+  useEffect(() => {
+    if (armed) return;
+    const arm = (request: ItemDetailOpenRequest | null) => {
+      pendingRef.current = request;
+      setArmed(true);
+    };
+    const onOpen = (event: Event) => {
+      const request = (event as CustomEvent<ItemDetailOpenRequest>).detail;
+      if (request?.itemId === itemId) arm(request);
+    };
+    const onHash = () => {
+      if (window.location.hash === `#item-${itemId}`) arm(null);
+    };
+    onHash();
+    window.addEventListener(ITEM_DETAIL_OPEN_EVENT, onOpen);
+    window.addEventListener("hashchange", onHash);
+    return () => {
+      window.removeEventListener(ITEM_DETAIL_OPEN_EVENT, onOpen);
+      window.removeEventListener("hashchange", onHash);
+    };
+  }, [armed, itemId]);
+  useEffect(() => {
+    if (!armed || !pendingRef.current) return;
+    const request = pendingRef.current;
+    pendingRef.current = null;
+    window.dispatchEvent(new CustomEvent<ItemDetailOpenRequest>(ITEM_DETAIL_OPEN_EVENT, { detail: request }));
+  }, [armed]);
+  return armed ? <ItemDetailPanelInner {...props} /> : null;
 }

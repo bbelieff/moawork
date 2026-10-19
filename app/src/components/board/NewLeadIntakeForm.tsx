@@ -120,7 +120,7 @@ export function NewLeadIntakeForm({
             <input name="representative_name" className="h-9 rounded-lg border border-mw-line bg-mw-card px-2.5 text-xs text-mw-fg" />
           </label>
           <label className="grid gap-1 text-xs text-mw-sub">이메일
-            <input name="email" type="email" className="h-9 rounded-lg border border-mw-line bg-mw-card px-2.5 text-xs text-mw-fg" />
+            <input name="email" type="email" autoComplete="off" spellCheck={false} className="h-9 rounded-lg border border-mw-line bg-mw-card px-2.5 text-xs text-mw-fg" />
           </label>
           <label className="grid gap-1 text-xs text-mw-sub">업종
             <input name="industry" className="h-9 rounded-lg border border-mw-line bg-mw-card px-2.5 text-xs text-mw-fg" />
@@ -139,8 +139,8 @@ export function NewLeadIntakeForm({
       <fieldset disabled={pending} className="grid gap-2 border-t border-mw-line pt-2">
         <legend className="text-xs font-semibold text-mw-fg">담당자와 연관담당 <span className="font-normal text-mw-sub">선택</span></legend>
         <div className="grid gap-2 sm:grid-cols-2">
-          <div className="grid content-start gap-1 rounded-lg border border-mw-line p-2">
-            <span className="text-xs font-semibold text-mw-body">담당자 1명</span>
+          <div role="radiogroup" aria-labelledby={`${errorId}-owner`} className="grid content-start gap-1 rounded-lg border border-mw-line p-2">
+            <span id={`${errorId}-owner`} className="text-xs font-semibold text-mw-body">담당자 1명</span>
             {members.map((member) => (
               <label key={member.id} className="flex min-h-8 items-center gap-2 text-xs text-mw-fg">
                 <input type="radio" name="assigned_to" value={member.id} defaultChecked={member.id === currentUserId} />
@@ -148,8 +148,8 @@ export function NewLeadIntakeForm({
               </label>
             ))}
           </div>
-          <div className="grid content-start gap-1 rounded-lg border border-mw-line p-2">
-            <span className="text-xs font-semibold text-mw-body">연관담당 · 알림받는 사람 여러 명</span>
+          <div role="group" aria-labelledby={`${errorId}-collab`} className="grid content-start gap-1 rounded-lg border border-mw-line p-2">
+            <span id={`${errorId}-collab`} className="text-xs font-semibold text-mw-body">연관담당 · 알림받는 사람 여러 명</span>
             {members.map((member) => (
               <label key={member.id} className="flex min-h-8 items-center gap-2 text-xs text-mw-fg">
                 <input type="checkbox" name="collaborator_ids" value={member.id} />
@@ -172,7 +172,7 @@ export function NewLeadIntakeForm({
   return (
     <>
           <button ref={headerOpenerRef} type="button" onClick={prepareOpen} data-mw-cta={variant === "header" ? "primary" : undefined} className={variant === "inline" ? "inline-flex min-h-11 items-center rounded-md px-2 text-xs text-mw-sub hover:bg-mw-bg hover:text-mw-fg" : "flex h-[34px] shrink-0 items-center rounded-[var(--mw-r-2)] bg-mw-primary px-3.5 text-[length:var(--fs-13)] font-semibold text-mw-on-accent"}>
-            {variant === "inline" ? "＋ 새 항목" : "＋ 새 회사"}
+            ＋ 새 회사
           </button>
           {open ? <BoardModalLayer label="새 회사 등록" dismissible={!pending} returnFocusRef={headerOpenerRef} onClose={() => closeEditor(false)}>
               <div className="w-[min(34rem,calc(100vw-1.5rem))] max-h-[calc(100dvh-2rem)] overflow-y-auto rounded-[var(--mw-radius)] border border-mw-line bg-mw-card p-4 shadow-xl">

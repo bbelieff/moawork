@@ -112,8 +112,8 @@ describe("GroupTable 셀 — 라벨 만들기 입구", () => {
       input.focus();
       typeInto(input, "새값");
     });
-    expect(host.textContent).toContain("「새값」 새로 만들기");
-    const createButton = [...host.querySelectorAll("button")].find((b) => b.textContent?.includes("새로 만들기"))!;
+    expect(document.body.textContent).toContain("「새값」 새로 만들기");
+    const createButton = [...document.body.querySelectorAll("button")].find((b) => b.textContent?.includes("새로 만들기"))!;
     await act(async () => createButton.click());
     expect(created).toHaveLength(1);
     // 컬럼 id 보존·열쇠 동봉 — 기존 옵션 업데이트 서비스로 간다.
@@ -137,11 +137,11 @@ describe("GroupTable 셀 — 라벨 만들기 입구", () => {
       typeInto(input, "B");
     });
     // 검색은 된다.
-    expect(host.textContent).toContain("B");
-    expect(host.textContent).not.toContain("새로 만들기");
+    expect(document.body.textContent).toContain("B");
+    expect(document.body.textContent).not.toContain("새로 만들기");
     await act(async () => typeInto(input, "없는값"));
-    expect(host.textContent).not.toContain("새로 만들기");
-    expect(host.textContent).toContain("찾은 값이 없습니다");
+    expect(document.body.textContent).not.toContain("새로 만들기");
+    expect(document.body.textContent).toContain("찾은 값이 없습니다");
   });
 
   it("보호 컬럼(진행상황·지역)은 관리 권한이 있어도 만들기 행이 없다", async () => {
@@ -161,11 +161,11 @@ describe("GroupTable 셀 — 라벨 만들기 입구", () => {
         input.focus();
         typeInto(input, "없는값");
       });
-      expect(host.textContent, name).not.toContain("새로 만들기");
+      expect(document.body.textContent, name).not.toContain("새로 만들기");
     }
     // 검색·선택은 그대로 된다.
     const progress = host.querySelector('input[aria-label="진행상황"]') as HTMLInputElement;
     await act(async () => typeInto(progress, "A"));
-    expect(host.textContent).toContain("A");
+    expect(document.body.textContent).toContain("A");
   });
 });

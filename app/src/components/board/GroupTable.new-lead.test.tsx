@@ -90,7 +90,7 @@ function render(
 describe("BBE-171 new-lead GroupTable wiring", () => {
   it("그룹 추가는 입력 폼을 표 안에 펼치지 않고 팝업 진입 버튼만 표시한다", () => {
     const html = render();
-    expect(html).toContain("＋ 새 항목");
+    expect(html).toContain("＋ 새 회사");
     expect(html).not.toContain('name="requestId"');
     expect(html).not.toContain('name="revenue_band_custom"');
     expect(html).not.toContain("연관담당 · 알림받는 사람 여러 명");

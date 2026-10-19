@@ -24,7 +24,7 @@ import { analyzePhone, formatPhone } from "@/lib/format/phone";
 import { groupIfPlainNumber } from "@/lib/format/group-digits";
 
 const CONTROL = "h-9 w-full rounded-lg border border-mw-line bg-mw-card px-2.5 text-xs text-mw-fg outline-none focus:border-mw-record";
-const COMPACT_CONTROL = "h-7 w-full rounded border border-mw-line bg-mw-card px-2 text-xs text-mw-fg outline-none hover:border-mw-record focus:border-mw-record";
+const COMPACT_CONTROL = "h-7 w-full rounded border border-mw-line bg-mw-card px-2 text-xs text-mw-fg outline-none hover:border-mw-record focus:border-mw-record focus-visible:ring-2 focus-visible:ring-mw-record/45";
 
 function useReset(ref: RefObject<HTMLElement | null>, reset: () => void) {
   useEffect(() => {
@@ -140,7 +140,7 @@ export function PhoneField({ invalid = false }: { invalid?: boolean }) {
   return (
     <label className="grid gap-1 text-xs text-mw-sub">
       연락처
-      <input ref={inputRef} name="phone" inputMode="tel" autoComplete="tel" value={value}
+      <input ref={inputRef} name="phone" inputMode="tel" autoComplete="off" value={value}
         onChange={(event) => setValue(event.target.value)}
         onBlur={() => analysis.status === "normalized" && setValue(formatPhone(value))}
         aria-invalid={invalid || (value.length > 0 && analysis.status === "needs_review")}
@@ -251,6 +251,11 @@ export function RegionCombobox({ name, label, value, onValue, suggestions, disab
       window.removeEventListener("resize", place);
     };
   }, [compact, showList]);
+  // 화살표로 옮긴 항목이 목록 밖으로 나가지 않게 따라 내린다(경기 31개 등 긴 목록).
+  useEffect(() => {
+    if (!showList) return;
+    document.getElementById(`${listId}-${active}`)?.scrollIntoView?.({ block: "nearest" });
+  }, [active, showList, listId]);
   const choose = (entry: RegionSuggestion) => {
     onValue(entry.value);
     setOpen(false);

@@ -61,7 +61,7 @@ async function renderInForm(
 
 async function pick(host: HTMLElement, input: HTMLInputElement, label: string) {
   await act(async () => input.focus());
-  const option = [...host.querySelectorAll('[role="option"] button')].find((button) =>
+  const option = [...document.body.querySelectorAll('[role="option"] button')].find((button) =>
     button.textContent?.includes(label),
   ) as HTMLButtonElement;
   await act(async () => option.click());
