@@ -1609,7 +1609,7 @@ export function BoardWorkspace({
       settingsSections={board.is_system ? [] : tabSettingsSections}
       trash={board.is_system ? undefined : tabTrashSlot}
     >
-    <div data-board-workspace="" className="flex w-full min-w-0 max-w-full flex-col gap-3 overflow-x-hidden">
+    <div data-board-workspace="" className="-mx-6 -mt-3 flex w-[calc(100%+3rem)] min-w-0 max-w-[calc(100%+3rem)] flex-col gap-3 overflow-x-hidden px-6 pt-3">
       <BoardHeader
         boardId={board.id}
         icon={board.icon}
