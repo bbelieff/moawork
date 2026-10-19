@@ -180,11 +180,13 @@ describe("BoardWorkspace consultation stage view", () => {
     const text = host.textContent ?? "";
     expect(renderedRowNames(host)).toEqual(["방문 상담 건"]);
     expect(host.querySelector('button[aria-label="화상 상담 건 상담 확인 열기"]')).toBeNull();
-    expect(text).toContain("2단계 · 직인 (1)");
-    expect(text).toContain("1단계 · 계약금 입금 확인 (0)");
-    expect(text).toContain("대면상담예약 (0)");
-    expect(text).toContain("미팅취소 (0)");
-    expect(text).toContain("미팅 후 고민 중 (0)");
+    // ★ 177: 대면 = 미팅대기 → 계약(한 단계) · 완료 · 변경 / 끝: 취소(맨 아래).
+    expect(text).toContain("계약 (1)");
+    expect(text).not.toContain("1단계 · 계약금 입금 확인");
+    expect(text).toContain("미팅대기 (0)");
+    expect(text).toContain("완료 (0)");
+    expect(text).toContain("변경 (0)");
+    expect(text.indexOf("취소 (0)")).toBeGreaterThan(text.indexOf("계약 (1)"));
     expect(text).not.toContain("부재 (");
     await expectSharedConsultation(host, "방문 상담 건", "item-inperson");
   });

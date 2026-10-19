@@ -1,6 +1,6 @@
 "use client";
 
-import { consultationPhase, REMOTE_PHASES, INPERSON_PHASES, CONSULTATION_PHASE_LABEL } from "@/lib/consultation/phases";
+import { consultationPhase, REMOTE_PHASES, INPERSON_PHASES, CONSULTATION_PHASE_LABEL, TERMINAL_PHASES, phaseLabelFor } from "@/lib/consultation/phases";
 
 /**
  * 보드 화면 셸 — 헤더 1줄 + 보기 줄 1줄(#845 6단계 BoardViewBar) + **블록 리스트** (PLAN-002 WO-2).
@@ -868,15 +868,24 @@ export function BoardWorkspace({
       const entry = consultationByItem[row.id];
       if (!entry) continue;
       const phase = consultationPhase(entry);
-      // ★ 167: 계약 진행은 1단계(계약금) → 2단계(직인) → 완료. 계약금 칸을 바꾸면 바로 옮겨간다.
-      const key = phase === "contract" ? contractStepGroupKey(withRowContractFee(entry, row.values)) : phase;
+      // ★ 167: 비대면 계약 진행은 1단계(계약금) → 2단계(직인) → 완료. ★ 177: 대면 «계약» 은 한 단계 묶음.
+      const key = phase === "contract"
+        ? consultationView === "inperson" ? "contract" : contractStepGroupKey(withRowContractFee(entry, row.values))
+        : phase;
       const bucket = buckets.get(key);
       if (bucket) bucket.push(row);
       else buckets.set(key, [row]);
     }
-    const phaseGroups = (consultationView === "inperson" ? INPERSON_PHASES : REMOTE_PHASES)
-      .filter((phase) => phase !== "contract").map((phase) => ({ key: phase, title: CONSULTATION_PHASE_LABEL[phase] }));
-    return [...phaseGroups, ...CONTRACT_STEP_GROUPS].map((group) => {
+    // ★ 177(belie 2026-10-19): 진행 단계 → 계약 → 끝난 상태(보류·거절·취소)는 맨 아래.
+    const mode = consultationView === "inperson" ? "inperson" : "remote";
+    const phases = mode === "inperson" ? INPERSON_PHASES : REMOTE_PHASES;
+    const live = phases.filter((phase) => phase !== "contract" && !TERMINAL_PHASES.has(phase));
+    const contractGroups = mode === "inperson"
+      ? [{ key: "contract", title: phaseLabelFor("contract", "inperson") }]
+      : [...CONTRACT_STEP_GROUPS];
+    const ended = phases.filter((phase) => TERMINAL_PHASES.has(phase));
+    const toGroup = (phase: (typeof phases)[number]) => ({ key: phase, title: CONSULTATION_PHASE_LABEL[phase] });
+    return [...live.map(toGroup), ...contractGroups, ...ended.map(toGroup)].map((group) => {
       const rows = [...(buckets.get(group.key) ?? [])].sort((a, b) => a.sort_order - b.sort_order);
       return {
         kind: "item-group" as const,

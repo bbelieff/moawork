@@ -14,11 +14,12 @@ describe("consultation phases and uncertain workflow transport", () => {
     expect(consultationPhase(base)).toBe("contract");
     expect(consultationPhase({ ...base, phase: "on_hold" })).toBe("on_hold");
   });
-  it("167: remote adds 부재 before 보류, in-person adds 미팅 후 고민 중 after 미팅취소; neither needs a schedule", () => {
-    expect(REMOTE_PHASES.map((phase) => CONSULTATION_PHASE_LABEL[phase])).toEqual(["정보수집", "상담예정", "상담중", "부재", "보류", "거절", "재상담", "계약 진행"]);
-    expect(INPERSON_PHASES.map((phase) => CONSULTATION_PHASE_LABEL[phase])).toEqual(["대면상담예약", "미팅완료", "미팅취소", "미팅 후 고민 중", "계약 진행"]);
+  it("177(belie 2026-10-19): 비대면 · 대면 단계 재정의 — 변경은 일시가 필요하다", () => {
+    expect(REMOTE_PHASES.map((phase) => CONSULTATION_PHASE_LABEL[phase])).toEqual(["정보수집", "상담예정", "상담중", "부재", "재상담", "계약고민", "보류", "거절", "계약 진행"]);
+    expect(INPERSON_PHASES.map((phase) => CONSULTATION_PHASE_LABEL[phase])).toEqual(["미팅대기", "계약 진행", "완료", "변경", "취소"]);
     expect(phaseNeedsSchedule("absent")).toBe(false);
     expect(phaseNeedsSchedule("deliberating")).toBe(false);
+    expect(phaseNeedsSchedule("rescheduled")).toBe(true);
   });
   it("167: 부재 label carries its origin; other phases ignore a stray origin", () => {
     expect(phaseLabel("absent", "scheduled")).toBe("부재 · 상담예정에서");

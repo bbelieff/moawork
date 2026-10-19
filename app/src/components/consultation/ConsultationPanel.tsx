@@ -25,7 +25,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ResultBanner } from "@/lib/ui/ResultBanner";
-import { consultationPhase, CONSULTATION_PHASE_LABEL, REMOTE_PHASES, INPERSON_PHASES, phaseLabel, phaseNeedsSchedule, type ConsultationPhase } from "@/lib/consultation/phases";
+import { consultationPhase, CONSULTATION_PHASE_LABEL,
+  phaseLabelFor, REMOTE_PHASES, INPERSON_PHASES, phaseLabel, phaseNeedsSchedule, type ConsultationPhase } from "@/lib/consultation/phases";
 import {
   mutateConsultationHandoff,
   mutateConsultationSeal,
@@ -342,7 +343,7 @@ export function ConsultationPanel({
                   onChange={(event) => setPhaseDraft(event.target.value as ConsultationPhase)}
                   className="min-h-9 border border-mw-line bg-mw-card px-2">
                   {(mode === "inperson" ? INPERSON_PHASES : [...REMOTE_PHASES, "meeting_scheduled" as const]).map((phase) =>
-                    <option key={phase} value={phase}>{CONSULTATION_PHASE_LABEL[phase]}</option>)}
+                    <option key={phase} value={phase}>{mode === "remote" && phase === "meeting_scheduled" ? "→ 대면 상담으로 (미팅대기)" : phaseLabelFor(phase, mode)}</option>)}
                 </select>
               </label>
               <button type="button" disabled={locked} onClick={() => void submitWorkflow(phaseDraft)}
