@@ -98,7 +98,8 @@
   flex-shrink: 0;
   place-items: center;
   overflow: hidden;
-  border-radius: calc(var(--mw-radius) - 5px);
+  /* 2026-10-19 — 알약 모양 회사 칸 안에서 네모 모서리가 경계를 뚫고 나오던 것: 동그랗게. */
+  border-radius: 999px;
   color: var(--mw-on-accent);
   font-weight: 800;
   line-height: 1;

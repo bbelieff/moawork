@@ -8,14 +8,14 @@
  *   · 이름: 「이름 바꾸기」 → 그 자리 입력칸, Enter·칸 떠나기로 저장 / Esc 로 취소(창이 먼저 닫혀도 저장)
  *          (renameGroupTitleAction — 그룹 머리말 이름 편집과 같은 권한·같은 서비스 호출)
  *   · 추가: 「＋ 단계 추가」 → addGroupAction
- *   · 지우기: 지금은 그룹을 지우는 액션이 없다. 새 파괴 경로를 만들지 않고 단추를 잠가 이유만 알려 준다
- *     (행이 남아 있으면 «먼저 다른 단계로 옮겨 주세요»).
+ *   · 지우기(2026-10-19): 빈 단계만 두 번 눌러 지운다(deleteGroupAction). 행이 남았거나 기본 탭의 정의
+ *     단계(지워도 repair 가 다시 만든다)면 잠그고 이유를 알려 준다.
  * 단계와 진행현황이 연결된 탭(계약업체 실무)은 이름·순서를 바꾸면 진행현황 선택지도 같이 바뀐다 —
  * 맨 위 한 줄 안내가 그것을 말한다. 저장 함수는 바꿔 끼울 수 있다(시각 픽스처).
  */
 
 import { useEffect, useId, useRef, useState, type DragEvent, type KeyboardEvent as ReactKeyboardEvent } from "react";
-import { addGroupAction, reorderGroupsAction } from "@/app/(app)/boards/actions";
+import { addGroupAction, deleteGroupAction, reorderGroupsAction } from "@/app/(app)/boards/actions";
 import { renameGroupTitleAction, type InlineTitleResult } from "@/app/(app)/boards/title-actions";
 import { presentLabel } from "@/lib/boards/label-presentation";
 import type { TabStageRow } from "@/lib/boards/tab-settings";
@@ -33,6 +33,7 @@ export function TabSettingsStages({
   reorderAction = reorderGroupsAction,
   renameAction = renameGroupTitleAction,
   addAction = addGroupAction,
+  deleteAction = deleteGroupAction,
 }: {
   boardId: string;
   /** 그룹 순서대로. 행 수는 화면에 보이는(권한 안의) 행만 센다. */
@@ -42,6 +43,7 @@ export function TabSettingsStages({
   reorderAction?: (formData: FormData) => Promise<void>;
   renameAction?: (boardId: string, groupId: string, value: string) => Promise<InlineTitleResult>;
   addAction?: (formData: FormData) => Promise<void>;
+  deleteAction?: (formData: FormData) => Promise<void>;
 }) {
   // 서버가 새 순서를 내려줄 때까지 누른 대로 먼저 보여 준다(낙관적). 서버 값이 오면 그것을 따른다.
   const [observed, setObserved] = useState(stages);
@@ -70,6 +72,19 @@ export function TabSettingsStages({
     void reorderAction(formData).catch(() => {
       setOrder(stages);
       setNotice({ ok: false, message: "순서를 저장하지 못했어요. 새로고침 후 다시 시도해 주세요." });
+    });
+  };
+
+  // 2026-10-19 — 빈 단계(기본 단계 아님) 지우기. 누른 대로 먼저 빼고, 실패하면 되돌린다.
+  const remove = (stage: TabStageRow) => {
+    setOrder((current) => current.filter((entry) => entry.id !== stage.id));
+    setNotice({ ok: true, message: `‘${presentLabel(nameOf(stage))}’ 단계를 지웠어요.` });
+    const formData = new FormData();
+    formData.set("boardId", boardId);
+    formData.set("groupId", stage.id);
+    void deleteAction(formData).catch(() => {
+      setOrder(stages);
+      setNotice({ ok: false, message: "단계를 지우지 못했어요. 새로고침 후 다시 시도해 주세요." });
     });
   };
 
@@ -145,6 +160,7 @@ export function TabSettingsStages({
                 onBeginEdit={() => setEditing(stage.id)}
                 onEndEdit={() => setEditing(null)}
                 onRename={(value) => rename(stage, value)}
+                onDelete={!stage.isDefault && stage.rowCount === 0 && order.length > 1 ? () => remove(stage) : undefined}
                 onDragStart={() => { draggedRef.current = stage.id; }}
                 onDragOver={(event) => {
                   if (!draggedRef.current) return;
@@ -191,6 +207,7 @@ function StageRow({
   onBeginEdit,
   onEndEdit,
   onRename,
+  onDelete,
   onDragStart,
   onDragOver,
   onDragLeave,
@@ -207,6 +224,8 @@ function StageRow({
   onBeginEdit(): void;
   onEndEdit(): void;
   onRename(value: string): Promise<boolean>;
+  /** 지울 수 있을 때만 — 행 0건·기본 단계 아님·마지막 단계 아님. */
+  onDelete?: () => void;
   onDragStart(): void;
   onDragOver(event: DragEvent<HTMLLIElement>): void;
   onDragLeave(): void;
@@ -221,9 +240,14 @@ function StageRow({
     if (!active || active === document.body) renameButtonRef.current?.focus();
   });
   const reasonId = `${useId().replace(/:/gu, "")}-delete-reason`;
+  const [confirming, setConfirming] = useState(false);
   const deleteReason = stage.rowCount > 0
     ? `행이 ${stage.rowCount}건 남아 있어 지울 수 없어요. 먼저 다른 단계로 옮겨 주세요.`
-    : "단계 지우기는 아직 이 화면에서 할 수 없어요.";
+    : stage.isDefault
+      ? "기본 단계라 지워도 다시 생겨요. 이름을 바꿔서 써 주세요."
+      : onDelete
+        ? confirming ? "한 번 더 누르면 지워요." : "이 단계를 지워요(비어 있어요)."
+        : "마지막 단계는 지울 수 없어요.";
 
   return (
     <li
@@ -293,13 +317,21 @@ function StageRow({
       )}
       <button
         type="button"
-        aria-label={`${shown} 지우기`}
-        aria-disabled="true"
+        aria-label={confirming ? `${shown} 정말 지우기` : `${shown} 지우기`}
+        aria-disabled={onDelete ? undefined : "true"}
         aria-describedby={reasonId}
         title={deleteReason}
         data-tab-stage-delete
-        onClick={(event) => event.preventDefault()}
-        className={SMALL_BUTTON}
+        data-confirming={confirming || undefined}
+        onClick={(event) => {
+          event.preventDefault();
+          if (!onDelete) return;
+          if (!confirming) { setConfirming(true); return; }
+          setConfirming(false);
+          onDelete();
+        }}
+        onBlur={() => setConfirming(false)}
+        className={`${SMALL_BUTTON} ${confirming ? "bg-mw-tint-coral text-mw-error" : onDelete ? "hover:text-mw-error" : ""}`}
       >
         <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3" /></svg>
       </button>

@@ -1632,7 +1632,7 @@ export function BoardWorkspace({
       settingsSections={board.is_system ? [] : tabSettingsSections}
       trash={board.is_system ? undefined : tabTrashSlot}
     >
-    <div data-board-workspace="" className="flex w-full min-w-0 max-w-full flex-col gap-3 overflow-x-hidden" style={{ "--mw-row-h": `${rowHeight}px` } as CSSProperties}>
+    <div data-board-workspace="" className="-mx-6 -mt-3 flex w-[calc(100%+3rem)] min-w-0 max-w-[calc(100%+3rem)] flex-col gap-3 overflow-x-hidden px-6 pt-3" style={{ "--mw-row-h": `${rowHeight}px` } as CSSProperties}>
       <BoardHeader
         // 2026-10-19(belie «한 줄에 다 들어오면 공간 절약») — 보기 줄을 제목 줄 안에 둔다(넓은 화면 한 줄, 좁으면 아래 줄).
         toolbar={(

@@ -58,6 +58,7 @@ import { isSectionPresetSource } from "@/lib/presets/section-presets";
 import { pickDefaultView } from "@/lib/custom/views";
 import { resolveBoardDetailLayout, resolveDetailLayout } from "./detail-layout";
 import { parseBoardSummarySettingsRequest, type BoardSummarySettingsReceipt } from "./summary-settings";
+import { protectedDefaultGroupIds } from "@/lib/default-tabs/install";
 
 export class NotFoundError extends Error {
   constructor(message = "찾을 수 없습니다") {
@@ -423,6 +424,33 @@ export class BoardsService {
     if (!group) throw new NotFoundError("그룹을 찾을 수 없습니다");
     await this.syncLinkedStage(ctx, board);
     return group;
+  }
+
+  /**
+   * 2026-10-19 — 탭 설정의 단계 지우기. 빈 단계만 지운다(휴지통·보관 행 포함, 하나라도 있으면 거부 —
+   * 지우면 그 행의 group_id 가 비어 «그룹 없음» 으로 떨어진다). 기본 탭의 정의 단계는 다음 진입 repair 가
+   * 다시 만들므로 지우지 않는다. 지운 뒤 연결된 단계 칸(진행현황)을 맞춘다.
+   */
+  async deleteGroup(ctx: Ctx, boardId: string, groupId: string) {
+    const board = await this.requireEditableBoard(ctx, boardId);
+    const repo = await this.repo;
+    const [groups, columns] = await Promise.all([repo.listGroups(ctx, boardId), repo.listColumns(ctx, boardId)]);
+    const group = groups.find((candidate) => candidate.id === groupId);
+    if (!group) throw new NotFoundError("단계를 찾을 수 없습니다");
+    if (groups.length <= 1) throw new BoardRuleError("단계가 하나뿐이라 지울 수 없어요.");
+    if (protectedDefaultGroupIds(board.source, columns, groups).has(groupId)) {
+      throw new BoardRuleError("기본 단계라 지워도 다시 생겨요. 이름을 바꿔서 써 주세요.");
+    }
+    const [active, deleted, archived] = await Promise.all([
+      repo.listItems(ctx, boardId),
+      repo.listDeletedItems(ctx, boardId),
+      repo.listArchivedItems(ctx, boardId),
+    ]);
+    const remaining = [...active, ...deleted, ...archived].filter((item) => item.group_id === groupId).length;
+    if (remaining > 0) throw new BoardRuleError(`행이 ${remaining}건(휴지통 포함) 남아 있어 지울 수 없어요. 먼저 다른 단계로 옮겨 주세요.`);
+    const removed = await repo.deleteGroup(ctx, groupId);
+    if (!removed) throw new NotFoundError("단계를 찾을 수 없습니다");
+    await this.syncLinkedStage(ctx, board);
   }
 
   /**

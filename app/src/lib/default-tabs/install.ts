@@ -1154,3 +1154,29 @@ export async function ensureDefaultTabs(
   }
   return ensured;
 }
+
+/**
+ * 2026-10-19(belie «탭설정에서 이건 왜 못지우지») — 기본 탭이 «정의 그룹» 으로 알아보는 그룹 id.
+ *
+ * 이 그룹을 지우면 다음 진입 repair(ensureDefaultTab)가 같은 이름으로 다시 만든다. 그래서 탭 설정의
+ * 「지우기」 는 이 그룹을 잠그고 «이름을 바꿔 쓰세요» 라고 알린다. 판정은 repair 와 같은 눈
+ * (findExistingGroup — 연결된 단계 규칙, 같은 뜻의 이름)을 쓰고, 담당자 슬롯 그룹은 표식으로 본다.
+ */
+export function protectedDefaultGroupIds(
+  source: string | null | undefined,
+  columns: readonly StageLinkColumn[],
+  groups: readonly { id: string; name: string; sort_order?: number }[],
+): Set<string> {
+  const ids = new Set<string>();
+  const tab = DEFAULT_TABS.find((candidate) => candidate.source === source);
+  if (!tab) return ids;
+  for (const definition of tab.groups) {
+    if (definition.assigneeSlot !== undefined) continue;
+    const found = findExistingGroup(tab, definition, groups, columns, []);
+    if (found) ids.add(found.id);
+  }
+  if (tab.groups.some((definition) => definition.assigneeSlot !== undefined)) {
+    for (const group of groups) if (assigneeOwnerFromGroupName(group.name) !== null) ids.add(group.id);
+  }
+  return ids;
+}
