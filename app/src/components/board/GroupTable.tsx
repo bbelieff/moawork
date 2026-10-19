@@ -34,6 +34,7 @@ import type {
 import { formatCell } from "@/lib/boards/cells";
 import type { FieldOption } from "@/lib/types";
 import { groupDigitsForInput, regroupInputInPlace } from "@/lib/format/group-digits";
+import { ROW_HEIGHT_DEFAULT, setBoardRowHeight } from "./board-row-height";
 import { NEW_LEAD_FIELD_KEYS } from "@/lib/new-lead/cell-fields";
 import { presentPhone } from "@/lib/format/phone";
 import { kstDateTimeLocal } from "@/lib/format/kst-datetime";
@@ -1204,6 +1205,27 @@ export function GroupTable({
     : undefined;
   const titleWidthAttr = titleColumn.width ? String(titleColumn.width) : undefined;
 
+  // 행 높이 끌기 — 누른 행의 높이에서 시작해 움직인 만큼 모든 행(보드 전체)의 높이를 바꾼다.
+  const startRowResize = (event: React.PointerEvent<HTMLSpanElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const row = event.currentTarget.closest("tr");
+    const startY = event.clientY;
+    const startHeight = row ? row.getBoundingClientRect().height : ROW_HEIGHT_DEFAULT;
+    let latest = startHeight;
+    const move = (moveEvent: PointerEvent) => {
+      latest = startHeight + (moveEvent.clientY - startY);
+      setBoardRowHeight(boardId, latest, false);
+    };
+    const up = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      setBoardRowHeight(boardId, latest);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  };
+
   const startResize =
     (columnId: string) => (e: React.MouseEvent<HTMLSpanElement>) => {
       e.preventDefault();
@@ -1566,6 +1588,17 @@ export function GroupTable({
                   data-board-title-cell
                   data-title-width={titleWidthAttr}
                 >
+                  {/* 2026-10-19 — 행 아래 테두리를 끌면 모든 행 높이가 같이 바뀌고, 두 번 누르면 기본(한 줄)으로. */}
+                  <span
+                    aria-hidden="true"
+                    data-row-resize
+                    data-no-drag
+                    draggable={false}
+                    title="끌어서 행 높이 조절 · 두 번 누르면 기본"
+                    onPointerDown={startRowResize}
+                    onDoubleClick={(event) => { event.preventDefault(); event.stopPropagation(); setBoardRowHeight(boardId, null); }}
+                    className="absolute inset-x-0 -bottom-[3px] z-[1] h-[6px] cursor-row-resize hover:bg-mw-record/30"
+                  />
                   <div className="flex items-center gap-1.5">
                     {selection && onToggleRow ? (
                       <input

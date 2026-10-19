@@ -17,7 +17,7 @@ describe("Issue #592 board table format parity", () => {
     expect(style).toContain("BOARD_TABLE_CONTROL");
     expect(style).toContain("h-7 w-full");
     expect(style).toContain("border-mw-line bg-mw-card");
-    expect(style).toContain('BOARD_TABLE_ROW = "h-8"');
+    expect(style).toContain('BOARD_TABLE_ROW = "h-[var(--mw-row-h,34px)]"');
     expect(table).toContain('data-board-table-format="uniform"');
     expect(table).not.toContain('canonicalNewLead ? "h-8" : "h-9"');
     expect(detail).not.toContain('canonicalNewLead ? "min-h-7" : "min-h-8"');

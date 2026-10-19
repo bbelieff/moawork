@@ -37,6 +37,7 @@ export function BoardHeader({
   groups,
   readOnly,
   backSlot,
+  toolbar,
   helpSlot,
   addItemSlot,
   canEditTitle = false,
@@ -52,6 +53,8 @@ export function BoardHeader({
   description: string | null;
   /** 상위 화면으로 돌아가는 링크(서버에서 렌더해 내려준다). */
   backSlot?: ReactNode;
+  /** 보기 줄 — 넓은 화면은 제목 줄 안 한 줄, 좁으면 그 아래 줄(2026-10-19). */
+  toolbar?: ReactNode;
   /** 제목 바로 옆의 짧은 도움말. */
   helpSlot?: ReactNode;
   /** 보드별 기본 등록 폼. 신규리드는 회사 기본 정보를 함께 저장하는 전용 폼을 쓴다. */
@@ -79,8 +82,8 @@ export function BoardHeader({
   const iconKey = resolveBoardIconKey(icon, source);
 
   return (
-    <div ref={headerRef} data-visual-block="board-header" className="relative flex min-w-0 max-w-full items-center gap-3">
-      <div className="mw-board-inline-scroll -my-3 flex min-w-0 flex-1 flex-nowrap items-center gap-1.5 overflow-x-auto overflow-y-hidden py-3 ps-3 -ms-3 pe-2 [scroll-padding-inline-end:0.5rem]">
+    <div ref={headerRef} data-visual-block="board-header" className="relative flex min-w-0 max-w-full flex-wrap items-center gap-x-3 gap-y-2 xl:flex-nowrap">
+      <div className={`mw-board-inline-scroll -my-3 flex min-w-0 flex-1 flex-nowrap items-center gap-1.5 overflow-x-auto overflow-y-hidden py-3 ps-3 -ms-3 pe-2 [scroll-padding-inline-end:0.5rem] ${toolbar ? "xl:max-w-max xl:flex-none" : ""}`}>
         {backSlot}
 
         <h1 className="flex shrink-0 items-center gap-2 text-[length:var(--fs-18)] font-semibold tracking-[var(--ls-tight)] text-mw-fg sm:text-[length:var(--fs-22)]">
@@ -130,6 +133,12 @@ export function BoardHeader({
         {description ? <DescriptionHint text={description} /> : null}
         {helpSlot}
       </div>
+
+      {toolbar ? (
+        <div data-board-header-toolbar className="order-last min-w-0 basis-full xl:order-none xl:basis-0 xl:flex-1">
+          {toolbar}
+        </div>
+      ) : null}
 
       <div data-board-action-rail className="mw-layer-board-header relative z-[var(--mw-layer-board-header)] flex shrink-0 items-center gap-2 bg-mw-bg">
         {openSettings ? <TabSettingsButton onOpen={(opener) => openSettings({ opener })} /> : null}

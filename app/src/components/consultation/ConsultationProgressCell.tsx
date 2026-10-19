@@ -33,8 +33,8 @@ export function ConsultationProgressCell({
     : null;
 
   return (
-    <div className="min-w-44">
-      <p className="text-xs font-semibold text-mw-fg" aria-describedby={descriptionId}>
+    <div className="flex min-w-44 items-center gap-1.5">
+      <p className="min-w-0 flex-1 truncate text-xs font-semibold text-mw-fg" aria-describedby={descriptionId}>
         {entry && phase !== "contract" ? (
           <>{phaseLabel(phase!, entry.absentFromPhase)}{entry.meetingAt ? <span className="ml-1 font-normal text-mw-sub">{new Date(entry.meetingAt).toLocaleString("ko-KR")}</span> : null}</>
         ) : entry ? (
@@ -51,8 +51,8 @@ export function ConsultationProgressCell({
         onClick={(event) => requestItemDetailOpen(itemId, event.currentTarget)}
         aria-label={`${title} 상담 확인 열기`}
         data-no-drag
-        className="mt-1 min-h-9 border border-mw-line px-2 text-xs font-semibold text-mw-body"
-        style={{ borderRadius: "var(--mw-r-1, 3px)" }}
+        // 2026-10-19 — 한 줄 행: 단계 글자 옆 작은 알약.
+        className="inline-flex h-6 shrink-0 items-center rounded-full border border-mw-line bg-mw-card px-2 text-[0.68rem] font-semibold text-mw-body hover:border-mw-record hover:text-mw-record"
       >
         확인 열기
       </button>
