@@ -61,7 +61,7 @@ describe("#797 saved flat label creation", () => {
   it.each(["institution", "fund_name", "product"])("permitted %s uses existing create and cell-save actions", async (key) => {
     const host = await mount(key);
     await search(host, "새 선택지");
-    const create = [...host.querySelectorAll("button")].find((button) => button.textContent?.includes("새로 만들기"));
+    const create = [...document.body.querySelectorAll("button")].find((button) => button.textContent?.includes("새로 만들기"));
     expect(create).toBeDefined();
     await act(async () => create!.click());
     expect(actions.addBoardLabelOptionAction).toHaveBeenCalledTimes(1);
@@ -76,14 +76,14 @@ describe("#797 saved flat label creation", () => {
   it.each([{ canManageColumns: false }, { isSystem: true }])("keeps creation hidden for restricted props %j", async (permissions) => {
     const host = await mount("institution", permissions);
     await search(host, "기존");
-    expect(host.textContent).toContain("기존 선택지");
+    expect(document.body.textContent).toContain("기존 선택지");
     await search(host, "새 선택지");
-    expect(host.textContent).not.toContain("새로 만들기");
+    expect(document.body.textContent).not.toContain("새로 만들기");
     expect(actions.addBoardLabelOptionAction).not.toHaveBeenCalled();
   });
   it("keeps read-only cells noninteractive even with column permission", async () => {
     const host = await mount("institution", { canEditItems: false });
-    expect(host.textContent).toContain("기존 선택지");
+    expect(document.body.textContent).toContain("기존 선택지");
     expect(host.querySelector('input[aria-label="선택지"]')).toBeNull();
     expect(actions.addBoardLabelOptionAction).not.toHaveBeenCalled();
   });

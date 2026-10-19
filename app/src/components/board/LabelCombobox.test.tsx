@@ -51,9 +51,9 @@ describe("LabelCombobox — 검색·키보드", () => {
     const host = mount();
     const input = await renderCombo(host);
     await act(async () => input.focus());
-    expect(host.querySelector('[role="listbox"]')).not.toBeNull();
+    expect(document.body.querySelector('[role="listbox"]')).not.toBeNull();
     await act(async () => type(input, "심사"));
-    expect([...host.querySelectorAll('[role="option"]')].map((o) => o.textContent)).toEqual(["심사 중"]);
+    expect([...document.body.querySelectorAll('[role="option"]')].map((o) => o.textContent)).toEqual(["심사 중"]);
   });
 
   it("↓ + Enter 로 키보드 선택한다", async () => {
@@ -65,7 +65,7 @@ describe("LabelCombobox — 검색·키보드", () => {
     await act(async () => key(input, "ArrowDown"));
     await act(async () => key(input, "Enter"));
     expect(onSelect).toHaveBeenCalledWith("승인");
-    expect(host.querySelector('[role="listbox"]')).toBeNull();
+    expect(document.body.querySelector('[role="listbox"]')).toBeNull();
   });
 
   it("Esc 는 닫기만 하고 입력값을 버리지 않는다", async () => {
@@ -74,7 +74,7 @@ describe("LabelCombobox — 검색·키보드", () => {
     await act(async () => input.focus());
     await act(async () => type(input, "승인"));
     await act(async () => key(input, "Escape"));
-    expect(host.querySelector('[role="listbox"]')).toBeNull();
+    expect(document.body.querySelector('[role="listbox"]')).toBeNull();
     expect(input.value).toBe("승인");
   });
 });
@@ -85,7 +85,7 @@ describe("LabelCombobox — 만들기", () => {
     const input = await renderCombo(host, { canCreate: true, createLabel: vi.fn(async () => ({ ok: true, message: "ok" })) });
     await act(async () => input.focus());
     await act(async () => type(input, "새 라벨"));
-    expect(host.textContent).toContain("「새 라벨」 새로 만들기");
+    expect(document.body.textContent).toContain("「새 라벨」 새로 만들기");
   });
 
   it("만들기 권한이 없으면 만들기 행이 없다 — 검색·선택만 된다", async () => {
@@ -93,8 +93,8 @@ describe("LabelCombobox — 만들기", () => {
     const input = await renderCombo(host, {});
     await act(async () => input.focus());
     await act(async () => type(input, "새 라벨"));
-    expect(host.textContent).not.toContain("새로 만들기");
-    expect(host.textContent).toContain("찾은 값이 없습니다");
+    expect(document.body.textContent).not.toContain("새로 만들기");
+    expect(document.body.textContent).toContain("찾은 값이 없습니다");
   });
 
   it("만들기 성공하면 선택하고 부모에 알린다", async () => {
@@ -105,7 +105,7 @@ describe("LabelCombobox — 만들기", () => {
     const input = await renderCombo(host, { canCreate: true, createLabel, onSelect, onCreated });
     await act(async () => input.focus());
     await act(async () => type(input, "새 라벨"));
-    const createButton = [...host.querySelectorAll("button")].find((b) => b.textContent?.includes("새로 만들기"))!;
+    const createButton = [...document.body.querySelectorAll("button")].find((b) => b.textContent?.includes("새로 만들기"))!;
     await act(async () => createButton.click());
     expect(createLabel).toHaveBeenCalledWith("새 라벨");
     expect(onSelect).toHaveBeenCalledWith("새 라벨");
@@ -137,13 +137,13 @@ describe("LabelCombobox — 만들기", () => {
     const input = host.querySelector('input[role="combobox"]') as HTMLInputElement;
     await act(async () => input.focus());
     await act(async () => type(input, "진행중"));
-    const createButton = [...host.querySelectorAll("button")].find((b) => b.textContent?.includes("새로 만들기"))!;
+    const createButton = [...document.body.querySelectorAll("button")].find((b) => b.textContent?.includes("새로 만들기"))!;
     await act(async () => createButton.click());
     expect(createLabel).toHaveBeenCalledWith("진행중");
     expect(onSelect).toHaveBeenCalledWith("진행중");
     // 쿼리가 사라지지 않는다.
     expect(input.value).toBe("진행중");
-    expect(host.textContent).toContain("이미 있어요");
+    expect(document.body.textContent).toContain("이미 있어요");
   });
 
   it("실패해도 쿼리가 남는다", async () => {
@@ -153,11 +153,11 @@ describe("LabelCombobox — 만들기", () => {
     const input = await renderCombo(host, { canCreate: true, createLabel, onSelect });
     await act(async () => input.focus());
     await act(async () => type(input, "새 라벨"));
-    const createButton = [...host.querySelectorAll("button")].find((b) => b.textContent?.includes("새로 만들기"))!;
+    const createButton = [...document.body.querySelectorAll("button")].find((b) => b.textContent?.includes("새로 만들기"))!;
     await act(async () => createButton.click());
     expect(onSelect).not.toHaveBeenCalled();
     expect(input.value).toBe("새 라벨");
-    expect(host.textContent).toContain("만들지 못했어요");
+    expect(document.body.textContent).toContain("만들지 못했어요");
   });
 });
 
@@ -167,9 +167,9 @@ describe("LabelCombobox — 복수·폼 계약", () => {
     const input = await renderCombo(host, { multiple: true, value: [], name: "value" });
     await act(async () => input.focus());
     await act(async () => type(input, "진행"));
-    const optionButton = [...host.querySelectorAll('[role="option"] button')][0];
+    const optionButton = [...document.body.querySelectorAll('[role="option"] button')][0];
     await act(async () => (optionButton as HTMLElement).click());
-    expect(host.textContent).toContain("진행중");
+    expect(document.body.textContent).toContain("진행중");
     const hidden = host.querySelector('input[type="hidden"][name="value"]') as HTMLInputElement;
     expect(hidden?.value).toBe("진행중");
   });
@@ -194,7 +194,7 @@ describe("LabelCombobox — 복수·폼 계약", () => {
     const input = host.querySelector('input[role="combobox"]') as HTMLInputElement;
     await act(async () => input.focus());
     await act(async () => type(input, "승인"));
-    const optionButton = [...host.querySelectorAll('[role="option"] button')][0];
+    const optionButton = [...document.body.querySelectorAll('[role="option"] button')][0];
     await act(async () => (optionButton as HTMLElement).click());
     expect(submitted).toBe("승인");
   });
@@ -206,9 +206,9 @@ describe("LabelCombobox canonical refresh and empty keyboard selection", () => {
     const host = mount();
     const input = await renderCombo(host);
     await act(async () => input.focus());
-    expect(host.textContent).toContain("승인");
+    expect(document.body.textContent).toContain("승인");
     await renderCombo(host, { options: OPTIONS.slice(0, 2) });
-    expect([...host.querySelectorAll('[role="option"]')].map(o => o.textContent)).toEqual(["진행중", "심사 중"]);
+    expect([...document.body.querySelectorAll('[role="option"]')].map(o => o.textContent)).toEqual(["진행중", "심사 중"]);
   });
 
   it("clears optimistic created options when a fresh server definition arrives", async () => {
@@ -217,11 +217,11 @@ describe("LabelCombobox canonical refresh and empty keyboard selection", () => {
     const input = await renderCombo(host, { canCreate: true, onSelect, createLabel: vi.fn(async () => ({ ok: true, optionId: "새 라벨", message: "ok" })) });
     await act(async () => input.focus());
     await act(async () => type(input, "새 라벨"));
-    await act(async () => [...host.querySelectorAll("button")].find(b => b.textContent?.includes("새로 만들기"))!.click());
+    await act(async () => [...document.body.querySelectorAll("button")].find(b => b.textContent?.includes("새로 만들기"))!.click());
     await renderCombo(host, { options: [...OPTIONS, { id: "새 라벨", label: "새 라벨" }], onSelect });
     await renderCombo(host, { options: [...OPTIONS], onSelect });
     await act(async () => input.focus());
-    expect([...host.querySelectorAll('[role="option"]')].some(o => o.textContent === "새 라벨")).toBe(false);
+    expect([...document.body.querySelectorAll('[role="option"]')].some(o => o.textContent === "새 라벨")).toBe(false);
   });
 
   it("empty search then down+enter neither throws nor selects a missing option", async () => {
@@ -248,7 +248,7 @@ it("refreshes multi-select hidden values when the persisted selection changes", 
   const host = mount();
   const input = await renderCombo(host, { multiple: true, value: ["진행중"], name: "choices" });
   await act(async () => input.focus());
-  await act(async () => (host.querySelectorAll('[role="option"] button')[1] as HTMLButtonElement).click());
+  await act(async () => (document.body.querySelectorAll('[role="option"] button')[1] as HTMLButtonElement).click());
   expect([...host.querySelectorAll<HTMLInputElement>('input[name="choices"]')].map(e => e.value)).toEqual(["진행중", "심사 중"]);
   await renderCombo(host, { multiple: true, value: ["승인"], name: "choices" });
   expect([...host.querySelectorAll<HTMLInputElement>('input[name="choices"]')].map(e => e.value)).toEqual(["승인"]);

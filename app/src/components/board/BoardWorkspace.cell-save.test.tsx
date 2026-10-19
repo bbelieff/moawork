@@ -55,7 +55,7 @@ async function pick(host: HTMLElement, label: string) {
     input.blur();
     input.focus();
   });
-  const option = [...host.querySelectorAll<HTMLButtonElement>('[role="option"] button')].find((button) => button.textContent?.includes(label))!;
+  const option = [...document.body.querySelectorAll<HTMLButtonElement>('[role="option"] button')].find((button) => button.textContent?.includes(label))!;
   await act(async () => option.click());
 }
 

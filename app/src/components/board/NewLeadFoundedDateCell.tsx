@@ -149,7 +149,7 @@ export function NewLeadFoundedDateCell({
           statusChangeRef.current?.("저장 확인 필요");
         }}
       />
-      {constraintError || actionError ? <span id={itemId + "-founded-date-error"} role="alert" className="absolute left-0 top-full z-10 mt-1 w-64 rounded border border-mw-error bg-mw-card p-2 text-[0.65rem] text-mw-error shadow-lg">{constraintError || actionError}</span> : null}
+      {constraintError || actionError ? <span id={itemId + "-founded-date-error"} role="alert" className="mt-0.5 block whitespace-normal text-[0.65rem] text-mw-error">{constraintError || actionError}</span> : null}
     </form>
   );
 }

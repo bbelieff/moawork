@@ -18,8 +18,8 @@
 
 import { ResultBanner } from "@/lib/ui/ResultBanner";
 import type { ResultNotice } from "@/lib/ui/result-notice";
-import { useId, useMemo, useRef, useState } from "react";
-import { useFormStatus } from "react-dom";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { createPortal, useFormStatus } from "react-dom";
 import { filterLabelOptions, normalizeLabelKey } from "@/lib/boards/label-options";
 
 export type LabelComboOption = Readonly<{ id: string; label: string }>;
@@ -118,6 +118,34 @@ export function LabelCombobox({
     return localMulti?.source === selectionKey ? localMulti.values : propSelectedIds;
   }, [optimisticSingle, onSelect, multiple, propSelectedIds, localMulti, selectionKey]);
   const savingSingle = !multiple && !onSelect && formPending;
+
+  /*
+   * 2026-10-19 검토 — 목록을 칸 안 흐름에 그리면 행이 최대 160px 늘어나고, 칸(td overflow:hidden)이
+   * 넘치는 부분을 자른다. 열려 있는 동안 입력 바로 아래 화면 기준(fixed)으로 body 에 띄운다.
+   * 고른 항목은 화살표로 옮겨도 목록 안에서 보이게 따라 내린다.
+   */
+  const [anchor, setAnchor] = useState<{ top: number; left: number; width: number } | null>(null);
+  useEffect(() => {
+    if (!open) return;
+    const place = () => {
+      const rect = inputRef.current?.getBoundingClientRect();
+      if (rect) setAnchor({ top: rect.bottom + 4, left: rect.left, width: rect.width });
+    };
+    place();
+    window.addEventListener("scroll", place, true);
+    window.addEventListener("resize", place);
+    return () => {
+      window.removeEventListener("scroll", place, true);
+      window.removeEventListener("resize", place);
+    };
+  }, [open]);
+  useEffect(() => {
+    if (!open) return;
+    document.getElementById(`${listboxId}-${active}`)?.scrollIntoView?.({ block: "nearest" });
+  }, [open, active, listboxId]);
+  // 여러 개 고르는 칸 — 「저장」을 누르지 않고 벗어나도 고른 값을 버리지 않는다.
+  const multiDirty = multiple && !onSelect && localMulti?.source === selectionKey
+    && JSON.stringify(localMulti.values) !== selectionKey;
 
   const selectedLabel = useMemo(() => {
     if (multiple || selectedIds.length !== 1) return "";
@@ -249,6 +277,7 @@ export function LabelCombobox({
       : `${listboxId}-create`
     : undefined;
 
+
   return (
     <span className="block min-w-0">
       <span className="flex flex-wrap items-center gap-1">
@@ -296,18 +325,21 @@ export function LabelCombobox({
             // 팝업 안으로 포커스가 옮기면 닫지 않는다 — 버튼 클릭이 살아야 한다.
             if (!event.currentTarget.parentElement?.parentElement?.contains(event.relatedTarget as Node | null)) {
               setOpen(false);
+              const form = event.currentTarget.form;
+              if (multiDirty && form && !form.contains(event.relatedTarget as Node | null)) form.requestSubmit();
             }
           }}
           onKeyDown={onInputKeyDown}
           className={className}
         />
       </span>
-      {open ? (
+      {open && anchor && typeof document !== "undefined" ? createPortal(
         <ul
           id={listboxId}
           role="listbox"
           aria-label={`${label} 선택지`}
-          className="z-[var(--mw-layer-board-cell)] max-h-40 min-w-32 overflow-y-auto rounded-md border border-mw-line bg-mw-card shadow-lg"
+          style={anchor ? { position: "fixed", top: anchor.top, left: anchor.left, width: Math.max(anchor.width, 128) } : undefined}
+          className="mw-layer-page-popover max-h-40 min-w-32 overflow-y-auto rounded-md border border-mw-line bg-mw-card shadow-lg"
         >
           {filtered.map((option, index) => (
             <li
@@ -352,7 +384,8 @@ export function LabelCombobox({
           {filtered.length === 0 && !(showCreate || showCreateMulti) ? (
             <li className="px-2 py-1 text-xs text-mw-sub">찾은 값이 없습니다</li>
           ) : null}
-        </ul>
+        </ul>,
+        document.body,
       ) : null}
       {multiple && !onSelect ? (
         <button type="submit" className="mt-1 rounded border border-mw-line px-2 py-0.5 text-[0.65rem] hover:bg-zinc-50 dark:hover:bg-zinc-900">

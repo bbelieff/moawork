@@ -1862,7 +1862,7 @@ export function BoardWorkspace({
               displayName={blockDisplayNames.get(block.key)}
               tone={valueMode ? null : groupTones.get(block.key) ?? null}
               accentColor={block.groupValue?.accent ?? null}
-              addLabel={valueMode ? `${shownName}에 ${onDemandAdd ? "업체" : "새 항목"} 추가` : undefined}
+              addLabel={canonicalNewLead ? `${shownName}에 새 회사 추가` : valueMode ? `${shownName}에 ${onDemandAdd ? "업체" : "새 항목"} 추가` : undefined}
               columns={shown}
               rows={visibleRows}
               presetName={groupPresetName(board.name, block.name)}

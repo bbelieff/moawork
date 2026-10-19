@@ -9,7 +9,7 @@
  * 행 제목만 13px/600 으로 한 단계 올려 «행 > 칸» 위계를 만든다(굵기는 400/600 두 단계만).
  */
 export const BOARD_TABLE_CONTROL =
-  "h-7 w-full rounded border border-mw-line bg-mw-card px-2 text-xs text-mw-fg outline-none hover:border-mw-record focus:border-mw-record";
+  "h-7 w-full rounded border border-mw-line bg-mw-card px-2 text-xs text-mw-fg outline-none hover:border-mw-record focus:border-mw-record focus-visible:ring-2 focus-visible:ring-mw-record/45 focus-visible:ring-offset-1 focus-visible:ring-offset-mw-card";
 
 /**
  * 행 제목(이름) — #845 개선안(2026-10-08)부터 입력칸이 아니라 «상세 열기» 단추다.

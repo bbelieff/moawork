@@ -2,6 +2,7 @@
 
 import { createPortal } from "react-dom";
 import { useEffect, useRef, type ReactNode, type RefObject } from "react";
+import { escapeOwnedByOpenList } from "@/lib/ui/escape-owner";
 
 /**
  * 표의 sticky/overflow stacking context 밖에서 보드 대화상자를 그린다.
@@ -61,7 +62,7 @@ export function BoardModalLayer({
     });
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape" && dismissibleRef.current) {
-        if (ownsEscapeRef.current?.(event)) return;
+        if (ownsEscapeRef.current?.(event) || escapeOwnedByOpenList(event)) return;
         event.preventDefault();
         event.stopPropagation();
         closeRef.current();

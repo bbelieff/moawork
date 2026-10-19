@@ -41,7 +41,7 @@ export function NewLeadRevenue3yCell({
     : typeof value === "string"
       ? groupIfPlainNumber(value)
       : "";
-  const legacy = typeof legacyRevenueBand === "string" ? legacyRevenueBand.trim() : "";
+  const legacy = typeof legacyRevenueBand === "string" ? groupIfPlainNumber(legacyRevenueBand.trim()) : "";
   /* 적힌 해만 줄여 보인다. 하나도 없으면 줄 자체가 없다 — 빈 줄이 표를 늘리지 않게. */
   const yearsLine = revenueYearsSummary(readRevenueYears(years ?? {}));
   const formRef = useRef<HTMLFormElement>(null);
@@ -54,6 +54,9 @@ export function NewLeadRevenue3yCell({
   const consumedAttemptRef = useRef(0);
   const statusChangeRef = useRef(onStatusChange);
   const [draft, setDraft] = useState(shown);
+  // 백만원 단위라 1,000,000 이상이면 1조 원 — 원 단위로 잘못 친 값일 가능성이 크다(2026-10-19 검토).
+  const draftNumber = Number(draft.replace(/[,\s]/g, ""));
+  const implausible = draft.trim() !== "" && Number.isFinite(draftNumber) && draftNumber >= 1_000_000;
   const [constraintError, setConstraintError] = useState("");
   const [dismissedAttempt, setDismissedAttempt] = useState(0);
   const [state, action, pending] = useActionState(async (previous: SaveNewLeadFinancialState & { attempt: number }, formData: FormData) => {
@@ -152,7 +155,7 @@ export function NewLeadRevenue3yCell({
           value={draft}
           disabled={pending}
           aria-label="3개년매출"
-          aria-describedby={constraintError || actionError ? itemId + "-revenue-3y-error" : legacy ? itemId + "-revenue-3y-legacy" : undefined}
+          aria-describedby={[itemId + "-revenue-3y-unit", constraintError || actionError ? itemId + "-revenue-3y-error" : legacy ? itemId + "-revenue-3y-legacy" : "", implausible ? itemId + "-revenue-3y-check" : ""].filter(Boolean).join(" ")}
           aria-invalid={Boolean(constraintError || actionError)}
           placeholder={legacy || "0"}
           data-has-value={legacy ? "true" : undefined}
@@ -173,7 +176,7 @@ export function NewLeadRevenue3yCell({
             statusChangeRef.current?.("저장 확인 필요");
           }}
         />
-        <span aria-hidden="true" className="pointer-events-none absolute inset-y-0 right-2 flex items-center text-[0.65rem] text-mw-sub">백만원</span>
+        <span id={itemId + "-revenue-3y-unit"} aria-hidden="true" className="pointer-events-none absolute inset-y-0 right-2 flex items-center text-[0.65rem] text-mw-sub">백만원</span>
       </div>
       {yearsLine ? (
         <span className="mt-0.5 block truncate text-[0.6rem] tabular-nums text-mw-sub" title={yearsLine}>
@@ -181,7 +184,9 @@ export function NewLeadRevenue3yCell({
         </span>
       ) : null}
       {legacy && numeric === null ? <span id={itemId + "-revenue-3y-legacy"} className="sr-only">기존 매출 구간 {legacy}는 보존됩니다.</span> : null}
-      {constraintError || actionError ? <span id={itemId + "-revenue-3y-error"} role="alert" className="absolute left-0 top-full z-10 mt-1 w-64 rounded border border-mw-error bg-mw-card p-2 text-[0.65rem] text-mw-error shadow-lg">{constraintError || actionError}</span> : null}
+      {implausible ? <span id={itemId + "-revenue-3y-check"} className="mt-0.5 block whitespace-normal text-[0.65rem] text-mw-warning">1조 원이 넘어요 — 백만원 단위가 맞는지 확인해 주세요.</span> : null}
+      {/* 칸(td)이 넘치는 부분을 잘라 떠 있는 말풍선은 보이지 않았다 — 칸 안 아래 줄에 적는다. */}
+      {constraintError || actionError ? <span id={itemId + "-revenue-3y-error"} role="alert" className="mt-0.5 block whitespace-normal text-[0.65rem] text-mw-error">{constraintError || actionError}</span> : null}
     </form>
   );
 }
