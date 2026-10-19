@@ -57,9 +57,9 @@ describe("workflow progress presentation", () => {
   it("presents a neutral consultation destination without changing the stored transition value", () => {
     expect(workflowProgressSpec("new-lead")).toMatchObject({
       transitionValue: "리드컨택으로 넘기기",
-      transitionLabel: "상담관리로 넘기기",
-      targetLabel: "상담관리",
-      targetHref: "/contract",
+      transitionLabel: "상담으로 넘기기",
+      targetLabel: "비대면·대면 상담",
+      targetHref: "/consult-remote",
     });
   });
 

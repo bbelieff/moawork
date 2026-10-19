@@ -504,18 +504,20 @@ export function BoardWorkspace({
       org_id: board.org_id,
       board_id: board.id,
       key: CONSULTATION_PROGRESS_KEY,
-      label: "상담 진행",
+      // 2026-10-19(belie) — 비대면/대면 상담 보기에서는 이 칸이 «진행현황» 이다(상담 단계 고르기 + 넘기기).
+      //   리드컨택 계약 단계(contract_status) 진행현황은 이 보기에서 숨긴다 — 단계 체계가 둘이면 어느 쪽이 맞는지 모른다.
+      label: isConsultationStageView ? "진행현황" : "상담 진행",
       type: "text",
       source: "calc",
-      rightPinned: false,
+      rightPinned: isConsultationStageView,
       options_jsonb: null,
       sort_order: Number.MAX_SAFE_INTEGER,
-      width: 200,
+      width: isConsultationStageView ? 260 : 200,
       // 표시 전용 가상 칸 — 서버 setCells 도 이 키 쓰기를 거부하도록 is_readonly 를 못박는다.
       is_readonly: true,
       move_rule_jsonb: null,
     };
-  }, [board.id, board.org_id, showConsultationColumn]);
+  }, [board.id, board.org_id, isConsultationStageView, showConsultationColumn]);
   const filterProjection = canonicalNewLead ? NEW_LEAD_SAVED_FILTER_PROJECTION : undefined;
   const displayFilters = useMemo(
     () => canonicalNewLead
@@ -551,10 +553,13 @@ export function BoardWorkspace({
     // 상담 진행 가상 칸은 표 맨 끝(우측 고정 관문 바로 앞)에 둔다 — DB 컬럼이 아니라
     // 저장 보기·검색·일괄 대상에 들어가지 않는다.
     if (consultationProgressColumn && !base.some((column) => column.key === CONSULTATION_PROGRESS_KEY)) {
+      if (isConsultationStageView) {
+        return [...base.filter((column) => column.key !== WORKFLOW_PROGRESS_KEY), consultationProgressColumn];
+      }
       return [...base, consultationProgressColumn];
     }
     return base;
-  }, [activeColumns, board.source, collapseAds, consultationProgressColumn]);
+  }, [activeColumns, board.source, collapseAds, consultationProgressColumn, isConsultationStageView]);
   /*
    * #845 7단계 — 나눠 보기. 기본은 보드별(탭 안의 그룹 = 단계). 사람·목록·상태 칸을 고르면 모든 보드의 행을
    * 그 칸의 값 묶음으로 다시 나눈다. 고른 값은 주소(?group=)에 남고 «저장» 이 뷰에 담는다(보기 조건 groupBy).
@@ -2023,6 +2028,7 @@ export function BoardWorkspace({
                 scheduleRecipients={scheduleRecipients}
                 consultationByItem={showConsultationColumn ? consultationByItem : undefined}
                 consultationMembers={isContactBoard ? scheduleRecipients : undefined}
+                consultationEditable={isConsultationStageView}
                 renderConsultationSection={isContactBoard ? (row) => (
                   <ConsultationPanel
                     itemId={row.id}

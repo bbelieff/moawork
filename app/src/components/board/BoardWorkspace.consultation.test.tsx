@@ -164,7 +164,10 @@ describe("BoardWorkspace consultation stage view", () => {
     expect(text).toContain("정보수집 (0)");
     expect(text).toContain("부재 (0)");
     // 표에서 진행이 읽힌다.
-    expect(text).toContain("상담 진행");
+    // 2026-10-19 — 상담 보기의 진행현황 칸은 상담 단계 고르기다(계약 단계 칸 대신).
+    expect(text).toContain("진행현황");
+    expect(host.querySelector('select[aria-label="화상 상담 건 상담 단계"]')).not.toBeNull();
+    expect(text).toContain("대면 상담으로 넘기기…");
     expect(text).not.toMatch(/\d\/4|4단계|계약서 송부/);
     // 첫열 체크박스(일괄 선택)는 그대로 있다.
     const checkbox = host.querySelector('input[type="checkbox"][aria-label="화상 상담 건 선택"]');

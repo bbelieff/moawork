@@ -112,6 +112,69 @@ describe("ConsultationProgressCell", () => {
 });
 
 
+describe("ConsultationProgressCell editable stage picker (2026-10-19)", () => {
+  const select = () => container!.querySelector<HTMLSelectElement>('select[aria-label="대한정밀 상담 단계"]')!;
+  async function pick(value: string) {
+    await act(async () => { select().value = value; select().dispatchEvent(new Event("change", { bubbles: true })); });
+  }
+  beforeEach(() => {
+    consultationActions.mutateWorkflow.mockResolvedValue({ ok: true, message: "상담 기록을 저장했습니다.", version: 3 });
+  });
+
+  it("remote lists remote phases plus «대면 상담으로 넘기기», and saves a no-date phase in place", async () => {
+    await act(async () => root!.render(<ConsultationProgressCell itemId="item-1" title="대한정밀" assigneeId="user-1" entry={entryOf({ phase: "consulting" })} editable />));
+    const labels = [...select().options].map((option) => option.textContent);
+    expect(labels).toEqual(["정보수집", "상담예정", "상담중", "부재", "재상담", "계약고민", "보류", "거절", "계약 진행", "대면 상담으로 넘기기…"]);
+    await pick("deliberating");
+    const form = consultationActions.mutateWorkflow.mock.calls[0][1] as FormData;
+    expect(Object.fromEntries(form)).toMatchObject({ itemId: "item-1", mode: "remote", phase: "deliberating", expectedVersion: "2", meetingAt: "", assigneeId: "user-1" });
+  });
+
+  it("moving to 대면 asks for a meeting time first, then sends inperson meeting_scheduled with it", async () => {
+    await act(async () => root!.render(<ConsultationProgressCell itemId="item-1" title="대한정밀" assigneeId="user-1" entry={entryOf({ phase: "consulting" })} editable />));
+    await pick("__to_inperson");
+    expect(consultationActions.mutateWorkflow).not.toHaveBeenCalled();
+    const input = container!.querySelector<HTMLInputElement>('input[type="datetime-local"]')!;
+    expect(input.getAttribute("aria-label")).toBe("대한정밀 대면 미팅 일시");
+    await act(async () => {
+      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
+      setter.call(input, "2026-10-21T14:00");
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await act(async () => container!.querySelector("form")!.requestSubmit());
+    const form = consultationActions.mutateWorkflow.mock.calls[0][1] as FormData;
+    expect(form.get("mode")).toBe("inperson");
+    expect(form.get("phase")).toBe("meeting_scheduled");
+    expect(form.get("meetingAt")).toBe(new Date("2026-10-21T14:00").toISOString());
+  });
+
+  it("inperson lists 미팅대기·계약·완료·변경·취소 plus «비대면 상담으로 돌리기»; contract offers 계약업체 실무", async () => {
+    await act(async () => root!.render(<ConsultationProgressCell itemId="item-1" title="대한정밀" assigneeId="user-1" entry={entryOf({ phase: "contract", mode: "inperson" })} editable />));
+    expect([...select().options].map((option) => option.textContent)).toEqual(["미팅대기", "계약", "완료", "변경", "취소", "비대면 상담으로 돌리기…", "계약업체 실무로 넘기기…"]);
+    const opened = vi.fn();
+    window.addEventListener(ITEM_DETAIL_OPEN_EVENT, opened);
+    await pick("__to_work");
+    window.removeEventListener(ITEM_DETAIL_OPEN_EVENT, opened);
+    expect(opened).toHaveBeenCalled();
+    expect(consultationActions.mutateWorkflow).not.toHaveBeenCalled();
+  });
+
+  it("a scheduled row without an owner is stopped before the server", async () => {
+    const entry = { ...entryOf({ phase: "scheduled" }), meetingAt: "2026-10-21T05:00:00.000Z" };
+    await act(async () => root!.render(<ConsultationProgressCell itemId="item-1" title="대한정밀" assigneeId={null} entry={entry} editable />));
+    await pick("consulting");
+    expect(consultationActions.mutateWorkflow).not.toHaveBeenCalled();
+    expect(container!.querySelector('[role="alert"]')!.textContent).toBe("담당자를 먼저 정해 주세요");
+  });
+
+  it("server rejection shows its message in the cell", async () => {
+    consultationActions.mutateWorkflow.mockResolvedValueOnce({ ok: false, message: "다른 사람이 먼저 바꿨어요" });
+    await act(async () => root!.render(<ConsultationProgressCell itemId="item-1" title="대한정밀" assigneeId="user-1" entry={entryOf({ phase: "consulting" })} editable />));
+    await pick("rejected");
+    expect(container!.querySelector('[role="alert"]')!.textContent).toBe("다른 사람이 먼저 바꿨어요");
+  });
+});
+
 describe("consultation opens the shared item detail", () => {
   const members=[{id:"user-1",label:"김담당"},{id:"user-2",label:"이담당"}];
   let phase:string;

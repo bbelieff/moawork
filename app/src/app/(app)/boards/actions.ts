@@ -52,6 +52,8 @@ import {
   type DetailLayoutEntry,
 } from "@/lib/boards/detail-layout";
 import { advanceNewLeadToContact, NewLeadAdvanceError } from "@/lib/new-lead/advance";
+import { consultTargetHref, parseConsultTarget, startInpersonAfterAdvance } from "@/lib/consultation/after-advance";
+import type { ConsultationRpcClient } from "@/lib/consultation/supabaseConsultation";
 import { NEW_LEAD_TAB_SOURCE } from "@/lib/default-tabs/types";
 import {
   durableNewLeadDetailLayout,
@@ -630,9 +632,31 @@ export async function setCellAction(formData: FormData): Promise<void> {
       revalidatePath(`/boards/${boardId}`);
       return;
     }
+    // 2026-10-19(belie) — 넘길 곳을 고른다: 비대면 상담(기본) 또는 대면 상담(미팅 일시와 함께).
+    const consultTarget = parseConsultTarget(formData.get("consultTarget"));
+    if (consultTarget === "inperson") {
+      const reason = await startInpersonAfterAdvance(graph.client as unknown as ConsultationRpcClient, {
+        orgId: ctx.org.id,
+        itemId,
+        meetingAt: str(formData, "meetingAt") || null,
+        requestId: crypto.randomUUID(),
+      });
+      if (reason) {
+        // 안내는 옮겨 간 리드컨택 보드에 띄운다. 보드를 못 찾아도 넘기기 자체는 끝났다.
+        try {
+          const { data } = await graph.client.from("items").select("board_id").eq("id", itemId).maybeSingle();
+          const contactBoardId = (data as { board_id?: string } | null)?.board_id;
+          if (contactBoardId) await flashBoardActionError(contactBoardId, new UserFacingActionError(reason));
+        } catch (error) {
+          console.warn("[new-lead advance] inperson notice skipped", itemId, error);
+        }
+        revalidatePath(`/boards/${boardId}`);
+        redirect(consultTargetHref("remote"));
+      }
+    }
     revalidatePath(`/boards/${boardId}`);
     revalidatePath("/contract");
-    redirect("/contract");
+    redirect(consultTargetHref(consultTarget));
   }
   // ★ 여기서부터는 던지지 않는다(BBE-201). 저장 실패는 «그 셀 아래» 사유로 보여준다 —
   //   던지면 Next 오류 경계가 화면을 통째로 덮어 사용자가 입력하던 것까지 잃는다.
