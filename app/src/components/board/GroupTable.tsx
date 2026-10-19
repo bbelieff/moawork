@@ -322,6 +322,7 @@ export function BoardCell({
   canMoveRows = true,
   consultationEntry,
   consultationMembers,
+  consultationEditable,
   cellAction,
   bulkStatusIntercept,
   canCreateColumnOptions,
@@ -345,6 +346,8 @@ export function BoardCell({
   consultationEntry?: ConsultationBoardEntry | null;
   /** 상담 담당자 선택지 — 확인 팝오버의 담당자 목록에 쓴다. */
   consultationMembers?: ReadonlyArray<{ id: string; label: string }>;
+  /** 비대면/대면 상담 보기 — 진행현황 칸에서 그 자리 단계 고르기. */
+  consultationEditable?: boolean;
   /** 결정론적 화면 검증에서만 저장소 경계를 바꾼다. 실제 셀 폼/제출 흐름은 그대로 둔다. */
   cellAction?: (formData: FormData) => Promise<void>;
   /**
@@ -450,6 +453,7 @@ export function BoardCell({
         meetingAt={typeof row.values.meeting_at === "string" ? row.values.meeting_at : null}
         assigneeId={typeof row.assigned_to === "string" ? row.assigned_to : null}
         members={consultationMembers ?? []}
+        editable={consultationEditable === true && !readOnly}
         companyName={row.title}
       />
     );
@@ -794,6 +798,7 @@ export function GroupTable({
   renderWorkflowTransition,
   consultationByItem,
   consultationMembers = [],
+  consultationEditable = false,
   renderConsultationSection,
   hideAddRow = false,
   addRowMode = "always",
@@ -926,6 +931,7 @@ export function GroupTable({
   consultationByItem?: ConsultationBoardMap;
   /** 상담 담당자 선택지 — 확인 팝오버·상세 인라인의 담당자 목록에 쓴다. */
   consultationMembers?: ReadonlyArray<{ id: string; label: string }>;
+  consultationEditable?: boolean;
   /** 행 상세에 얹는 상담 확인 인라인 — 업무이동 메뉴 없이 상세에서 바로 확인한다. */
   renderConsultationSection?: (row: ItemWithValues) => ReactNode;
   /** 상담 단계 보기(가상 계약 단계 묶음)에서는 새 행 추가 줄을 감춘다. */
@@ -1784,6 +1790,7 @@ export function GroupTable({
                           canMoveRows={canMoveRows || (viewerUserId !== undefined && row.assigned_to === viewerUserId)}
                           consultationEntry={consultationByItem?.[row.id] ?? null}
                           consultationMembers={consultationMembers}
+                          consultationEditable={consultationEditable}
                           cellAction={cellAction}
                           canCreateColumnOptions={canManageColumns}
                           addLabelOptionAction={addLabelOptionAction}

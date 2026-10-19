@@ -172,14 +172,15 @@ export function WorkflowProgressCell({
             <NewLeadPipelineRepair key={row.id} itemId={row.id} available={repairAvailable} />
           ) : null}
           {kind === "new-lead" ? (
-            <form action={action} className="mt-4 flex justify-end gap-2">
-              <input type="hidden" name="boardId" value={boardId} />
-              <input type="hidden" name="itemId" value={row.id} />
-              <input type="hidden" name="columnKey" value={spec.stageColumnKey} />
-              <input type="hidden" name="value" value={spec.transitionValue ?? ""} />
-              <button type="button" onClick={() => dialog.current?.close()} className="h-10 rounded-lg border border-mw-line px-4 text-sm font-semibold text-mw-body">취소</button>
-              <button type="submit" data-mw-cta="primary" className="h-10 rounded-lg bg-mw-primary px-4 text-sm font-semibold text-mw-on-accent">{spec.transitionLabel}</button>
-            </form>
+            <NewLeadConsultChoice
+              action={action}
+              boardId={boardId}
+              itemId={row.id}
+              columnKey={spec.stageColumnKey}
+              value={spec.transitionValue ?? ""}
+              hasAssignee={Boolean(row.assigned_to)}
+              onCancel={() => dialog.current?.close()}
+            />
           ) : kind === "contact" ? (
             dialogOpen
               ? transitionAction ?? <p role="alert" className="mt-4 text-sm text-mw-error">이동 정보를 불러오지 못했습니다. 새로고침 후 다시 시도해 주세요.</p>
@@ -193,5 +194,76 @@ export function WorkflowProgressCell({
         </div>
       </dialog>
     </div>
+  );
+}
+
+/**
+ * 2026-10-19(belie «신규리드에서 비대면·대면 어디로든») — 통화 뒤 비대면으로 끝낼지 대면으로 만날지 고른다.
+ * 대면은 미팅 일시를 함께 받는다(브라우저 시간대 값을 ISO 로 바꿔 보낸다 — 서버가 시간대를 다시 해석하지 않게).
+ */
+function NewLeadConsultChoice({
+  action,
+  boardId,
+  itemId,
+  columnKey,
+  value,
+  hasAssignee,
+  onCancel,
+}: Readonly<{
+  action: (formData: FormData) => Promise<void>;
+  boardId: string;
+  itemId: string;
+  columnKey: string;
+  value: string;
+  hasAssignee: boolean;
+  onCancel: () => void;
+}>) {
+  const [target, setTarget] = useState<"remote" | "inperson">("remote");
+  const [when, setWhen] = useState("");
+  const meeting = when ? new Date(when) : null;
+  const meetingIso = meeting && !Number.isNaN(meeting.getTime()) ? meeting.toISOString() : "";
+  const blocked = target === "inperson" && (!meetingIso || !hasAssignee);
+  const choice = (key: "remote" | "inperson", label: string, hint: string) => (
+    <label className={`flex flex-1 cursor-pointer flex-col gap-0.5 rounded-xl border px-3 py-2 text-sm ${target === key ? "border-mw-record bg-mw-tint-blue" : "border-mw-line bg-mw-card"}`}>
+      <span className="flex items-center gap-2 font-semibold">
+        <input type="radio" name="consultTarget" value={key} checked={target === key} onChange={() => setTarget(key)} />
+        {label}
+      </span>
+      <span className="text-xs text-mw-sub">{hint}</span>
+    </label>
+  );
+  return (
+    <form action={action} className="mt-4 flex flex-col gap-3">
+      <input type="hidden" name="boardId" value={boardId} />
+      <input type="hidden" name="itemId" value={itemId} />
+      <input type="hidden" name="columnKey" value={columnKey} />
+      <input type="hidden" name="value" value={value} />
+      <input type="hidden" name="meetingAt" value={target === "inperson" ? meetingIso : ""} />
+      <fieldset className="flex flex-col gap-2 sm:flex-row">
+        <legend className="sr-only">어디로 넘길까요</legend>
+        {choice("remote", "비대면 상담", "전화·화상으로 상담을 이어가요")}
+        {choice("inperson", "대면 상담", "미팅 일시를 잡고 만나요")}
+      </fieldset>
+      {target === "inperson" ? (
+        <label className="flex flex-col gap-1 text-xs text-mw-sub">
+          미팅 일시
+          <input
+            type="datetime-local"
+            aria-label="대면 미팅 일시"
+            value={when}
+            onChange={(event) => setWhen(event.target.value)}
+            required
+            className="h-10 rounded-lg border border-mw-line bg-mw-card px-3 text-sm text-mw-fg"
+          />
+          {!hasAssignee ? <span role="alert" className="text-mw-error">담당자를 먼저 정해 주세요 — 대면 미팅은 담당자가 있어야 잡을 수 있어요.</span> : null}
+        </label>
+      ) : null}
+      <div className="flex justify-end gap-2">
+        <button type="button" onClick={onCancel} className="h-10 rounded-lg border border-mw-line px-4 text-sm font-semibold text-mw-body">취소</button>
+        <button type="submit" disabled={blocked} data-mw-cta="primary" className="h-10 rounded-lg bg-mw-primary px-4 text-sm font-semibold text-mw-on-accent disabled:opacity-50">
+          {target === "inperson" ? "대면 상담으로 넘기기" : "비대면 상담으로 넘기기"}
+        </button>
+      </div>
+    </form>
   );
 }

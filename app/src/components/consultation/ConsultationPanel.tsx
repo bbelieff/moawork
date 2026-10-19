@@ -25,7 +25,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ResultBanner } from "@/lib/ui/ResultBanner";
-import { consultationPhase, CONSULTATION_PHASE_LABEL,
+import { consultationPhase,
   phaseLabelFor, REMOTE_PHASES, INPERSON_PHASES, phaseLabel, phaseNeedsSchedule, type ConsultationPhase } from "@/lib/consultation/phases";
 import {
   mutateConsultationHandoff,

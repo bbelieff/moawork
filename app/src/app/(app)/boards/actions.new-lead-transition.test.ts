@@ -61,7 +61,8 @@ describe("BBE-172 new-lead contact transition action", () => {
       p_request_id: "00000000-0000-4000-8000-000000000172",
     });
     expect(setCells).not.toHaveBeenCalled();
-    expect(redirect).toHaveBeenCalledWith("/contract");
+    // 2026-10-19 — 기본 넘길 곳은 비대면 상담 화면.
+    expect(redirect).toHaveBeenCalledWith("/consult-remote");
     expect(revalidatePath).toHaveBeenCalledWith("/contract");
   });
 
@@ -73,7 +74,28 @@ describe("BBE-172 new-lead contact transition action", () => {
     await expect(setCellAction(form("리드컨택으로 넘기기", undefined, "consult_status"))).rejects.toThrow("NEXT_REDIRECT");
     expect(rpc).toHaveBeenCalledWith("advance_new_lead_to_contact", expect.objectContaining({ p_item_id: "item-1" }));
     expect(setCells).not.toHaveBeenCalled();
-    expect(redirect).toHaveBeenCalledWith("/contract");
+    expect(redirect).toHaveBeenCalledWith("/consult-remote");
+  });
+
+  it("대면을 골랐는데 대면 시작 저장이 실패하면 넘기기는 유지하고 비대면 상담으로 안내한다", async () => {
+    rpc
+      .mockResolvedValueOnce({ data: [{ status: "committed", deal_id: "deal-1", company_id: null, reason: null }], error: null })
+      .mockResolvedValue({ data: null, error: { code: "42501", message: "denied" } });
+    const data = form("리드컨택으로 넘기기", undefined, "consult_status");
+    data.set("consultTarget", "inperson");
+    data.set("meetingAt", "2026-10-21T05:00:00.000Z");
+    await expect(setCellAction(data)).rejects.toThrow("NEXT_REDIRECT");
+    expect(rpc).toHaveBeenCalledWith("read_consultation_snapshot_v2", expect.objectContaining({ p_item_id: "item-1" }));
+    expect(redirect).toHaveBeenCalledWith("/consult-remote");
+  });
+
+  it("대면을 골랐는데 미팅 일시가 없으면 대면 저장을 시도하지 않는다", async () => {
+    rpc.mockResolvedValueOnce({ data: [{ status: "committed", deal_id: "deal-1", company_id: null, reason: null }], error: null });
+    const data = form("리드컨택으로 넘기기", undefined, "consult_status");
+    data.set("consultTarget", "inperson");
+    await expect(setCellAction(data)).rejects.toThrow("NEXT_REDIRECT");
+    expect(rpc).toHaveBeenCalledTimes(1);
+    expect(redirect).toHaveBeenCalledWith("/consult-remote");
   });
 
   it("keeps non-transition values on the ordinary cell path with RPC zero", async () => {
