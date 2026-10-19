@@ -1,14 +1,14 @@
 .trigger {
   display: inline-flex;
   max-width: 100%;
-  min-height: 1.85rem;
+  min-height: 1.6rem;
   align-items: center;
   gap: 0.4rem;
   overflow: hidden;
   border: 1px solid transparent;
-  border-radius: 0.45rem;
+  border-radius: 999px;
   background: transparent;
-  padding: 0.2rem 0.4rem;
+  padding: 0.1rem 0.4rem;
   color: var(--mw-body);
   font: inherit;
   font-size: 0.7rem;

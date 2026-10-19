@@ -32,6 +32,7 @@ import {
   useOptimistic,
   useRef,
   useState,
+  type CSSProperties,
   type ReactNode,
 } from "react";
 import type { Board, BoardColumn, BoardGroup, CellValue, ItemWithValues } from "@/lib/boards/types";
@@ -169,6 +170,18 @@ import { BoardSummarySettingsPopover } from "./BoardSummarySettingsPopover";
 import { formatCell } from "@/lib/boards/cells";
 import { parseBoardSummaryConfig, type BoardSummarySettingsRequest } from "@/lib/boards/summary-settings";
 import { saveBoardSummarySettingsAction } from "@/app/(app)/boards/[id]/summary-actions";
+import { setConsultAdOpen, useBoardRowHeight, useConsultAdOpen } from "./board-row-height";
+
+/** 광고에서 온 칸(광고명 등) — 상담 화면에서 접는 대상. */
+function isAdColumn(column: { key: string; label: string }): boolean {
+  return column.key === "ad_name" || column.label.includes("광고");
+}
+
+/** 사이드바 «비대면 상담»·«대면 상담» 탭의 이름·아이콘(components/shell/nav-items.ts 와 같다). */
+const CONSULTATION_TAB_IDENTITY = {
+  remote: { name: "비대면 상담", icon: "video" },
+  inperson: { name: "대면 상담", icon: "people" },
+} as const;
 
 const NEW_LEAD_LEGACY_FACET_LABELS = { revenue_band: "기존 매출구간" } as const;
 const NO_COLUMN_KEYS: readonly string[] = [];
@@ -474,6 +487,14 @@ export function BoardWorkspace({
   const isContactBoard = board.source === CONTACT_TAB_SOURCE;
   const isConsultationStageView =
     isContactBoard && (consultationView === "remote" || consultationView === "inperson");
+  const rowHeight = useBoardRowHeight(board.id);
+  /*
+   * 2026-10-19(belie) — 비대면·대면 상담 화면은 이미 한 번 통화해 직접 얻은 정보가 갱신돼 있으니 광고 정보는
+   *   기본으로 접는다. 「광고 정보 펼치기」 로 펼치고, 고른 상태는 이 브라우저에 기억한다.
+   */
+  const adOpen = useConsultAdOpen();
+  const toggleAd = useCallback(() => setConsultAdOpen(!adOpen), [adOpen]);
+  const collapseAds = isConsultationStageView && !adOpen;
   const showConsultationColumn =
     isContactBoard && (isConsultationStageView || Object.keys(consultationByItem).length > 0);
   const consultationProgressColumn = useMemo<BoardColumn | null>(() => {
@@ -521,17 +542,19 @@ export function BoardWorkspace({
     // composite), but that synthetic key must never enter shared config.
     return summaryColumns.filter((column) => !archivedColumnIds.has(column.id));
   }, [archivedColumnIds, summaryColumns]);
+  const tableColumnsHaveAds = useMemo(() => activeColumns.some(isAdColumn), [activeColumns]);
   const tableColumns = useMemo(() => {
-    const base = board.source === NEW_LEAD_TAB_SOURCE
+    const shown = board.source === NEW_LEAD_TAB_SOURCE
       ? activeColumns.filter((column) => !NEW_LEAD_DETAIL_ONLY_KEYS.has(column.key))
       : activeColumns;
+    const base = collapseAds ? shown.filter((column) => !isAdColumn(column)) : shown;
     // 상담 진행 가상 칸은 표 맨 끝(우측 고정 관문 바로 앞)에 둔다 — DB 컬럼이 아니라
     // 저장 보기·검색·일괄 대상에 들어가지 않는다.
     if (consultationProgressColumn && !base.some((column) => column.key === CONSULTATION_PROGRESS_KEY)) {
       return [...base, consultationProgressColumn];
     }
     return base;
-  }, [activeColumns, board.source, consultationProgressColumn]);
+  }, [activeColumns, board.source, collapseAds, consultationProgressColumn]);
   /*
    * #845 7단계 — 나눠 보기. 기본은 보드별(탭 안의 그룹 = 단계). 사람·목록·상태 칸을 고르면 모든 보드의 행을
    * 그 칸의 값 묶음으로 다시 나눈다. 고른 값은 주소(?group=)에 남고 «저장» 이 뷰에 담는다(보기 조건 groupBy).
@@ -1609,15 +1632,59 @@ export function BoardWorkspace({
       settingsSections={board.is_system ? [] : tabSettingsSections}
       trash={board.is_system ? undefined : tabTrashSlot}
     >
-    <div data-board-workspace="" className="flex w-full min-w-0 max-w-full flex-col gap-3 overflow-x-hidden">
+    <div data-board-workspace="" className="flex w-full min-w-0 max-w-full flex-col gap-3 overflow-x-hidden" style={{ "--mw-row-h": `${rowHeight}px` } as CSSProperties}>
       <BoardHeader
+        // 2026-10-19(belie «한 줄에 다 들어오면 공간 절약») — 보기 줄을 제목 줄 안에 둔다(넓은 화면 한 줄, 좁으면 아래 줄).
+        toolbar={(
+          <div className="flex min-w-0 items-center gap-2">
+            <div className="min-w-0 flex-1">
+          <BoardViewBar
+            boardId={board.id}
+            currentUserId={currentUserId}
+            mode={viewMode}
+            filters={displayFilters}
+            onChange={setFilters}
+            groupBy={groupColumn?.key ?? ""}
+            groupByOptions={groupByOptions}
+            onGroupByChange={changeGroupBy}
+            columns={tableColumns}
+            rows={displayRows}
+            people={people}
+            matched={matched}
+            total={displayRows.length}
+            legacyFacetLabels={canonicalNewLead ? NEW_LEAD_LEGACY_FACET_LABELS : undefined}
+            focusFilter={filterFocus}
+            canonicalNewLead={canonicalNewLead}
+            loadSavedViews={loadSavedViews}
+            activeViewId={savedViewId}
+            calendarAvailable={calendarAvailable}
+            defaultCalendarFieldKey={tableColumns.find((column) => column.type === "date")?.key ?? null}
+            ready={filterUrlReady}
+          />
+            </div>
+            {isConsultationStageView && tableColumnsHaveAds ? (
+              <button
+                type="button"
+                onClick={toggleAd}
+                aria-pressed={adOpen}
+                data-consult-ad-toggle
+                className="inline-flex h-7 shrink-0 items-center gap-1 rounded-full border border-mw-line bg-mw-card px-2.5 text-xs text-mw-body hover:border-mw-sub"
+              >
+                {adOpen ? "광고 정보 접기" : "광고 정보 펼치기"}
+              </button>
+            ) : null}
+          </div>
+        )}
         boardId={board.id}
-        icon={board.icon}
-        name={board.name}
+        // 2026-10-19(belie) — 비대면·대면 상담은 같은 리드컨택 보드의 «단계 보기» 다. 머리말은 보드 이름이 아니라
+        //   사이드바 탭(1단계 메뉴)의 이름·아이콘을 따른다. 이 화면에서 제목을 고치면 두 탭이 함께 쓰는 보드 이름이
+        //   바뀌므로 제목 편집은 «전체 보기»(리드컨택)에서만 한다.
+        icon={isConsultationStageView ? CONSULTATION_TAB_IDENTITY[consultationView as "remote" | "inperson"].icon : board.icon}
+        name={isConsultationStageView ? CONSULTATION_TAB_IDENTITY[consultationView as "remote" | "inperson"].name : board.name}
         description={board.description}
         groups={groups}
         readOnly={readOnly}
-        canEditTitle={!board.is_system&&canManageSummaries}
+        canEditTitle={!board.is_system&&canManageSummaries&&!isConsultationStageView}
         source={board.source}
         backSlot={backSlot}
         helpSlot={onboardingSlot}
@@ -1646,30 +1713,6 @@ export function BoardWorkspace({
         ) : undefined}
       />
 
-      {/* 보드 이름 «아래» 의 보기 줄 하나 — 뷰 탭 · 보기 조건 · 저장 · 찾기 (BBE-214 순서 · #845 6단계). */}
-      <BoardViewBar
-        boardId={board.id}
-        currentUserId={currentUserId}
-        mode={viewMode}
-        filters={displayFilters}
-        onChange={setFilters}
-        groupBy={groupColumn?.key ?? ""}
-        groupByOptions={groupByOptions}
-        onGroupByChange={changeGroupBy}
-        columns={tableColumns}
-        rows={displayRows}
-        people={people}
-        matched={matched}
-        total={displayRows.length}
-        legacyFacetLabels={canonicalNewLead ? NEW_LEAD_LEGACY_FACET_LABELS : undefined}
-        focusFilter={filterFocus}
-        canonicalNewLead={canonicalNewLead}
-        loadSavedViews={loadSavedViews}
-        activeViewId={savedViewId}
-        calendarAvailable={calendarAvailable}
-        defaultCalendarFieldKey={tableColumns.find((column) => column.type === "date")?.key ?? null}
-        ready={filterUrlReady}
-      />
 
       {board.is_system && (
         <p className="rounded-lg border border-mw-line bg-mw-tint-blue px-3 py-2 text-xs text-mw-body">
